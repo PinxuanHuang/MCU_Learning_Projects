@@ -1,0 +1,32 @@
+# CubeIDE workspace 狀態
+.metadata/
+.recommenders/
+RemoteSystemsTempFiles/
+
+# 各練習的編譯輸出
+Debug/
+Release/
+build/
+
+# 編譯中間檔與韌體產物
+*.o
+*.d
+*.su
+*.cyclo
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.lst
+*.siz
+
+# 暫存及系統檔案
+*.log
+*.tmp
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
