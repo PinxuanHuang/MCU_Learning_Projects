@@ -91,33 +91,46 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  /* Hardware Reset */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
-  HAL_Delay(20);
+  if (ILI9341_Init() != ILI9341_OK)
+  {
+      Error_Handler();
+  }
 
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
-  HAL_Delay(150);
-
-  ILI9341_Init();
-
+  /* Black background */
   ILI9341_FillScreen(ILI9341_BLACK);
 
+  /* Three color bars */
   ILI9341_FillRect(
-      20, 30,
-      200, 60,
-      ILI9341_RED);
-
-  ILI9341_FillRect(
-      20, 130,
-      200, 60,
-      ILI9341_GREEN);
+      20, 28, 200, 50, ILI9341_RED);
 
   ILI9341_FillRect(
-      20, 230,
-      200, 60,
-      ILI9341_BLUE);
+      20, 98, 200, 50, ILI9341_GREEN);
 
+  ILI9341_FillRect(
+      20, 168, 200, 50, ILI9341_BLUE);
 
+  /* White outline */
+  ILI9341_DrawRect(
+      8, 8, 224, 304, ILI9341_WHITE);
+
+  /* A diagonal line */
+  ILI9341_DrawLine(
+      10, 240, 229, 285, ILI9341_YELLOW);
+
+  /* Text */
+  ILI9341_DrawString(
+      24, 260,
+      "STM32 + ILI9341",
+      ILI9341_WHITE,
+      ILI9341_BLACK,
+      1);
+
+  ILI9341_DrawString(
+      24, 280,
+      "SPI2 DRIVER OK",
+      ILI9341_CYAN,
+      ILI9341_BLACK,
+      1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
