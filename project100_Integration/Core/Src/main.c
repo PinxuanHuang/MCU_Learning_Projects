@@ -96,41 +96,47 @@ int main(void)
       Error_Handler();
   }
 
+  if (ILI9341_SetRotation(1) != ILI9341_OK)
+  {
+      Error_Handler();
+  }
+
+  if (ILI9341_Width() != ILI9341_NATIVE_HEIGHT ||
+      ILI9341_Height() != ILI9341_NATIVE_WIDTH)
+  {
+      Error_Handler();
+  }
+
   /* Black background */
   ILI9341_FillScreen(ILI9341_BLACK);
 
   /* Three color bars */
-  ILI9341_FillRect(
-      20, 28, 200, 50, ILI9341_RED);
-
-  ILI9341_FillRect(
-      20, 98, 200, 50, ILI9341_GREEN);
-
-  ILI9341_FillRect(
-      20, 168, 200, 50, ILI9341_BLUE);
+  ILI9341_FillRect(20, 20, 280, 50, ILI9341_RED);
+  ILI9341_FillRect(20, 95, 280, 50, ILI9341_GREEN);
+  ILI9341_FillRect(20, 170, 280, 50, ILI9341_BLUE);
 
   /* White outline */
-  ILI9341_DrawRect(
-      8, 8, 224, 304, ILI9341_WHITE);
-
-  /* A diagonal line */
-  ILI9341_DrawLine(
-      10, 240, 229, 285, ILI9341_YELLOW);
-
-  /* Text */
-  ILI9341_DrawString(
-      24, 260,
-      "STM32 + ILI9341",
-      ILI9341_WHITE,
-      ILI9341_BLACK,
-      1);
-
-  ILI9341_DrawString(
-      24, 280,
-      "SPI2 DRIVER OK",
-      ILI9341_CYAN,
-      ILI9341_BLACK,
-      1);
+//  ILI9341_DrawRect(
+//      8, 8, 224, 304, ILI9341_WHITE);
+//
+//  /* A diagonal line */
+//  ILI9341_DrawLine(
+//      10, 240, 229, 285, ILI9341_YELLOW);
+//
+//  /* Text */
+//  ILI9341_DrawString(
+//      24, 260,
+//      "STM32 + ILI9341",
+//      ILI9341_WHITE,
+//      ILI9341_BLACK,
+//      1);
+//
+//  ILI9341_DrawString(
+//      24, 280,
+//      "SPI2 DRIVER OK",
+//      ILI9341_CYAN,
+//      ILI9341_BLACK,
+//      1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
