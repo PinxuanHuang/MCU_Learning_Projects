@@ -15,6 +15,7 @@
   *
   ******************************************************************************
   */
+#include "ili9341.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -56,89 +57,7 @@ static void MX_SPI2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void TFT_Select(void)
-{
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
-}
 
-static void TFT_Unselect(void)
-{
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
-}
-
-static void TFT_WriteCommand(uint8_t cmd)
-{
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET); // DC = command
-
-    TFT_Select();
-
-    HAL_SPI_Transmit(&hspi2, &cmd, 1, HAL_MAX_DELAY);
-
-    TFT_Unselect();
-}
-
-static void TFT_WriteData(uint8_t data)
-{
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);   // DC = data
-
-    TFT_Select();
-
-    HAL_SPI_Transmit(&hspi2, &data, 1, HAL_MAX_DELAY);
-
-    TFT_Unselect();
-}
-static void TFT_WriteDataBuffer(uint8_t *data, uint32_t size)
-{
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);  // DC = Data
-
-    TFT_Select();
-
-    while (size > 0)
-    {
-        uint16_t chunk = (size > 65535) ? 65535 : size;
-
-        HAL_SPI_Transmit(&hspi2, data, chunk, HAL_MAX_DELAY);
-
-        data += chunk;
-        size -= chunk;
-    }
-
-    TFT_Unselect();
-}
-static void TFT_FillColor(uint16_t color)
-{
-    uint8_t pixel[2];
-
-    pixel[0] = color >> 8;
-    pixel[1] = color & 0xFF;
-
-    /* Column: 0 ~ 239 */
-    TFT_WriteCommand(0x2A);
-    TFT_WriteData(0x00);
-    TFT_WriteData(0x00);
-    TFT_WriteData(0x00);
-    TFT_WriteData(0xEF);
-
-    /* Row: 0 ~ 319 */
-    TFT_WriteCommand(0x2B);
-    TFT_WriteData(0x00);
-    TFT_WriteData(0x00);
-    TFT_WriteData(0x01);
-    TFT_WriteData(0x3F);
-
-    /* Memory Write */
-    TFT_WriteCommand(0x2C);
-
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET); // DC = Data
-    TFT_Select();
-
-    for (uint32_t i = 0; i < 240UL * 320UL; i++)
-    {
-        HAL_SPI_Transmit(&hspi2, pixel, 2, HAL_MAX_DELAY);
-    }
-
-    TFT_Unselect();
-}
 /* USER CODE END 0 */
 
 /**
@@ -179,48 +98,26 @@ int main(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
   HAL_Delay(150);
 
+  ILI9341_Init();
 
-  /* Software Reset */
-  TFT_WriteCommand(0x01);
-  HAL_Delay(150);
+  ILI9341_FillScreen(ILI9341_BLACK);
 
+  ILI9341_FillRect(
+      20, 30,
+      200, 60,
+      ILI9341_RED);
 
-  /* Sleep Out */
-  TFT_WriteCommand(0x11);
-  HAL_Delay(150);
+  ILI9341_FillRect(
+      20, 130,
+      200, 60,
+      ILI9341_GREEN);
 
-
-  /* Pixel Format = RGB565 */
-  TFT_WriteCommand(0x3A);
-  TFT_WriteData(0x55);
-
-
-  /* Memory Access Control */
-  TFT_WriteCommand(0x36);
-  TFT_WriteData(0x48);
-
-
-  /* Display ON */
-  TFT_WriteCommand(0x29);
-  HAL_Delay(100);
+  ILI9341_FillRect(
+      20, 230,
+      200, 60,
+      ILI9341_BLUE);
 
 
-  /* Fill screen RED */
-  /* ===== Color Test ===== */
-
-  TFT_FillColor(0xF800);
-  HAL_Delay(2000);
-
-  TFT_FillColor(0x07E0);
-  HAL_Delay(2000);
-
-  TFT_FillColor(0x001F);
-  HAL_Delay(2000);
-
-  TFT_FillColor(0xFFFF);
-  HAL_Delay(2000);
-
-  TFT_FillColor(0x0000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -230,6 +127,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
   }
   /* USER CODE END 3 */
 }
