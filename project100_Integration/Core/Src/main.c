@@ -16,6 +16,7 @@
   ******************************************************************************
   */
 #include "ili9341.h"
+#include "dashboard.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -96,7 +97,7 @@ int main(void)
       Error_Handler();
   }
 
-  if (ILI9341_SetRotation(1) != ILI9341_OK)
+  if (ILI9341_SetRotation(3) != ILI9341_OK)
   {
       Error_Handler();
   }
@@ -107,13 +108,14 @@ int main(void)
       Error_Handler();
   }
 
+  Dashboard_Init();
   /* Black background */
-  ILI9341_FillScreen(ILI9341_BLACK);
+//  ILI9341_FillScreen(ILI9341_BLACK);
 
   /* Three color bars */
-  ILI9341_FillRect(20, 20, 280, 50, ILI9341_RED);
-  ILI9341_FillRect(20, 95, 280, 50, ILI9341_GREEN);
-  ILI9341_FillRect(20, 170, 280, 50, ILI9341_BLUE);
+//  ILI9341_FillRect(20, 20, 280, 50, ILI9341_RED);
+//  ILI9341_FillRect(20, 95, 280, 50, ILI9341_GREEN);
+//  ILI9341_FillRect(20, 170, 280, 50, ILI9341_BLUE);
 
   /* White outline */
 //  ILI9341_DrawRect(
