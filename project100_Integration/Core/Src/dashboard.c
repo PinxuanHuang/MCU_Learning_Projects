@@ -5,9 +5,13 @@
  *      Author: pinxuanhuang
  */
 
+#include <stdbool.h>
+#include <stdio.h>
 #include "dashboard.h"
 #include "ili9341.h"
-#include <stdio.h>
+
+static DashboardStats last_stats;
+static bool has_last_stats = false;
 
 #define BG       0x1082
 #define PANEL    0x2104
@@ -53,45 +57,119 @@ void Dashboard_Update(const DashboardStats *stats)
 
     char buf[32];
 
-    /* Clear value areas only */
-    ILI9341_FillRect(65, 67, 230, 12, BG);
-    ILI9341_FillRect(65, 92, 230, 12, BG);
-    ILI9341_FillRect(65, 128, 100, 12, BG);
-    ILI9341_FillRect(65, 175, 100, 12, BG);
+    uint8_t cpu = stats->cpu_usage > 100U
+                ? 100U : stats->cpu_usage;
 
-    snprintf(buf, sizeof(buf),
-             "%lu kbps", (unsigned long)stats->rx_kbps);
+    uint8_t mem = stats->mem_usage > 100U
+                ? 100U : stats->mem_usage;
 
-    ILI9341_DrawString(65, 67, buf, CYAN, BG, 1);
+    uint8_t last_cpu = last_stats.cpu_usage > 100U
+                     ? 100U : last_stats.cpu_usage;
 
-    snprintf(buf, sizeof(buf),
-             "%lu kbps", (unsigned long)stats->tx_kbps);
+    uint8_t last_mem = last_stats.mem_usage > 100U
+                     ? 100U : last_stats.mem_usage;
 
-    ILI9341_DrawString(65, 92, buf, CYAN, BG, 1);
+    /* RX changed */
+    if (!has_last_stats ||
+        stats->rx_kbps != last_stats.rx_kbps)
+    {
+        ILI9341_FillRect(65, 67, 230, 12, BG);
 
-    uint8_t cpu = stats->cpu_usage > 100
-                ? 100 : stats->cpu_usage;
+        snprintf(buf, sizeof(buf),
+                 "%lu kbps",
+                 (unsigned long)stats->rx_kbps);
 
-    uint8_t mem = stats->mem_usage > 100
-                ? 100 : stats->mem_usage;
+        ILI9341_DrawString(
+            65, 67, buf, CYAN, BG, 1);
+    }
 
-    snprintf(buf, sizeof(buf), "%u%%", (unsigned)cpu);
-    ILI9341_DrawString(65, 128, buf, FG, BG, 1);
+    /* TX changed */
+    if (!has_last_stats ||
+        stats->tx_kbps != last_stats.tx_kbps)
+    {
+        ILI9341_FillRect(65, 92, 230, 12, BG);
 
-    snprintf(buf, sizeof(buf), "%u%%", (unsigned)mem);
-    ILI9341_DrawString(65, 175, buf, FG, BG, 1);
+        snprintf(buf, sizeof(buf),
+                 "%lu kbps",
+                 (unsigned long)stats->tx_kbps);
 
-    /* Update bars */
-    ILI9341_FillRect(12, 148, 280, 12, PANEL);
-    ILI9341_FillRect(12, 195, 280, 12, PANEL);
+        ILI9341_DrawString(
+            65, 92, buf, CYAN, BG, 1);
+    }
 
-    ILI9341_FillRect(
-        12, 148,
-        (uint16_t)(280U * cpu / 100U),
-        12, CYAN);
+    /* CPU changed */
+    if (!has_last_stats || cpu != last_cpu)
+    {
+        ILI9341_FillRect(65, 128, 100, 12, BG);
 
-    ILI9341_FillRect(
-        12, 195,
-        (uint16_t)(280U * mem / 100U),
-        12, GREEN);
+        snprintf(buf, sizeof(buf), "%u%%",
+                 (unsigned)cpu);
+
+        ILI9341_DrawString(
+            65, 128, buf, FG, BG, 1);
+
+        /* Repaint only the changed portion of the bar */
+        uint16_t old_w =
+            has_last_stats
+            ? (uint16_t)(280U * last_cpu / 100U)
+            : 0U;
+
+        uint16_t new_w =
+            (uint16_t)(280U * cpu / 100U);
+
+        if (!has_last_stats)
+            ILI9341_FillRect(12, 148, 280, 12, PANEL);
+
+        if (new_w > old_w)
+        {
+            ILI9341_FillRect(
+                12 + old_w, 148,
+                new_w - old_w, 12, CYAN);
+        }
+        else if (new_w < old_w)
+        {
+            ILI9341_FillRect(
+                12 + new_w, 148,
+                old_w - new_w, 12, PANEL);
+        }
+    }
+
+    /* RAM changed */
+    if (!has_last_stats || mem != last_mem)
+    {
+        ILI9341_FillRect(65, 175, 100, 12, BG);
+
+        snprintf(buf, sizeof(buf), "%u%%",
+                 (unsigned)mem);
+
+        ILI9341_DrawString(
+            65, 175, buf, FG, BG, 1);
+
+        uint16_t old_w =
+            has_last_stats
+            ? (uint16_t)(280U * last_mem / 100U)
+            : 0U;
+
+        uint16_t new_w =
+            (uint16_t)(280U * mem / 100U);
+
+        if (!has_last_stats)
+            ILI9341_FillRect(12, 195, 280, 12, PANEL);
+
+        if (new_w > old_w)
+        {
+            ILI9341_FillRect(
+                12 + old_w, 195,
+                new_w - old_w, 12, GREEN);
+        }
+        else if (new_w < old_w)
+        {
+            ILI9341_FillRect(
+                12 + new_w, 195,
+                old_w - new_w, 12, PANEL);
+        }
+    }
+
+    last_stats = *stats;
+    has_last_stats = true;
 }

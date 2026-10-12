@@ -35,7 +35,34 @@ extern SPI_HandleTypeDef hspi2;
 #define MADCTL_MX 0x40U
 #define MADCTL_MV 0x20U
 
-#define PIXEL_BATCH 64U
+#define PIXEL_BATCH 256U
+
+/* DMA Configuration */
+#define ILI9341_DMA_TIMEOUT_MS 1000U
+#define ILI9341_DMA_PIXELS 256U
+
+typedef enum
+{
+    TFT_DMA_IDLE = 0,
+    TFT_DMA_ACTIVE,
+    TFT_DMA_ERROR
+} TFT_DMA_State;
+
+/* Must remain valid throughout DMA transfers */
+static uint8_t dma_tx_buf[ILI9341_DMA_PIXELS * 2U];
+
+static volatile TFT_DMA_State dma_state = TFT_DMA_IDLE;
+
+static volatile uint8_t dma_chunk_done = 0;
+static volatile uint8_t dma_error = 0;
+
+static uint8_t dma_inflight = 0;
+
+static uint32_t dma_remaining_pixels = 0;
+static uint16_t dma_current_pixels = 0;
+
+static uint32_t dma_start_tick = 0;
+
 static uint16_t s_width = ILI9341_NATIVE_WIDTH;
 static uint16_t s_height = ILI9341_NATIVE_HEIGHT;
 static uint8_t s_initialized = 0;
@@ -269,4 +296,193 @@ ILI9341_Status ILI9341_DrawString(uint16_t x,uint16_t y,const char *str,uint16_t
         px+=(uint32_t)6U*scale;
     }
     return ILI9341_OK;
+}
+
+static ILI9341_Status dma_start_chunk(void)
+{
+    if (dma_remaining_pixels == 0U)
+        return ILI9341_OK;
+
+    uint16_t pixels =
+        (dma_remaining_pixels > ILI9341_DMA_PIXELS)
+        ? ILI9341_DMA_PIXELS
+        : (uint16_t)dma_remaining_pixels;
+
+    dma_current_pixels = pixels;
+
+    dma_chunk_done = 0U;
+
+    HAL_StatusTypeDef ret = HAL_SPI_Transmit_DMA(
+        TFT_SPI,
+        dma_tx_buf,
+        (uint16_t)(pixels * 2U));
+
+    if (ret != HAL_OK)
+    {
+        dma_error = 1U;
+        dma_state = TFT_DMA_ERROR;
+        return ILI9341_ERROR;
+    }
+
+    dma_inflight = 1U;
+
+    dma_start_tick = HAL_GetTick();
+
+    return ILI9341_OK;
+}
+
+ILI9341_Status ILI9341_FillRectDMA(
+    uint16_t x,
+    uint16_t y,
+    uint16_t w,
+    uint16_t h,
+    uint16_t color)
+{
+    if (!s_initialized)
+        return ILI9341_ERROR;
+
+    if (dma_state != TFT_DMA_IDLE)
+        return ILI9341_ERROR;
+
+    if (w == 0U || h == 0U)
+        return ILI9341_OK;
+
+    if (x >= s_width || y >= s_height)
+        return ILI9341_OK;
+
+    /* Clip safely */
+    if (w > s_width - x)
+        w = s_width - x;
+
+    if (h > s_height - y)
+        h = s_height - y;
+
+    /* Prepare repeated RGB565 data */
+    uint8_t high = (uint8_t)(color >> 8);
+    uint8_t low  = (uint8_t)(color & 0xFFU);
+
+    for (uint32_t i = 0;
+         i < ILI9341_DMA_PIXELS;
+         i++)
+    {
+        dma_tx_buf[i * 2U]     = high;
+        dma_tx_buf[i * 2U + 1U] = low;
+    }
+
+    ILI9341_Status s = address_window(
+        x,
+        y,
+        (uint16_t)(x + w - 1U),
+        (uint16_t)(y + h - 1U));
+
+    if (s != ILI9341_OK)
+        return s;
+
+    dma_remaining_pixels =
+        (uint32_t)w * (uint32_t)h;
+
+    dma_current_pixels = 0U;
+    dma_chunk_done = 0U;
+    dma_error = 0U;
+    dma_inflight = 0U;
+
+    dma_state = TFT_DMA_ACTIVE;
+
+    /* Pixel data phase */
+    dc_data();
+    cs_low();
+
+    if (dma_start_chunk() != ILI9341_OK)
+    {
+        cs_high();
+        return ILI9341_ERROR;
+    }
+
+    return ILI9341_OK;
+}
+
+void ILI9341_DMA_Service(void)
+{
+    if (dma_state != TFT_DMA_ACTIVE)
+        return;
+
+    if (dma_error)
+    {
+        dma_state = TFT_DMA_ERROR;
+
+        HAL_SPI_Abort(TFT_SPI);
+
+        dma_inflight = 0U;
+        cs_high();
+        return;
+    }
+
+    if (dma_inflight && dma_chunk_done)
+    {
+        dma_chunk_done = 0U;
+        dma_inflight = 0U;
+
+        dma_remaining_pixels -= dma_current_pixels;
+        dma_current_pixels = 0U;
+    }
+
+    if (dma_inflight)
+    {
+        if ((uint32_t)(HAL_GetTick() - dma_start_tick) >
+            ILI9341_DMA_TIMEOUT_MS)
+        {
+            dma_error = 1U;
+        }
+        return;
+    }
+
+    if (dma_remaining_pixels == 0U)
+    {
+        cs_high();
+        dma_state = TFT_DMA_IDLE;
+        return;
+    }
+
+    (void)dma_start_chunk();
+}
+
+uint8_t ILI9341_DMA_IsBusy(void)
+{
+    return dma_state == TFT_DMA_ACTIVE;
+}
+
+uint8_t ILI9341_DMA_HasError(void)
+{
+    return dma_state == TFT_DMA_ERROR || dma_error;
+}
+
+void ILI9341_DMA_TxCompleteCallback(
+    SPI_HandleTypeDef *hspi)
+{
+    if (hspi != TFT_SPI)
+        return;
+
+    if (dma_state == TFT_DMA_ACTIVE)
+        dma_chunk_done = 1U;
+}
+
+void ILI9341_DMA_ErrorCallback(
+    SPI_HandleTypeDef *hspi)
+{
+    if (hspi != TFT_SPI)
+        return;
+
+    if (dma_state == TFT_DMA_ACTIVE)
+        dma_error = 1U;
+}
+
+ILI9341_Status ILI9341_FillScreenDMA(
+    uint16_t color)
+{
+    return ILI9341_FillRectDMA(
+        0U,
+        0U,
+        s_width,
+        s_height,
+        color);
 }

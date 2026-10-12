@@ -43,14 +43,21 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi2;
+DMA_HandleTypeDef hdma_spi2_tx;
 
 /* USER CODE BEGIN PV */
+volatile uint32_t dma_red_ms = 0;
+volatile uint32_t dma_green_ms = 0;
+volatile uint32_t dma_blue_ms = 0;
 
+volatile uint32_t dma_loop_counter = 0;
+volatile uint8_t dma_test_error = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -90,6 +97,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   if (ILI9341_Init() != ILI9341_OK)
@@ -108,38 +116,141 @@ int main(void)
       Error_Handler();
   }
 
-  Dashboard_Init();
+//  uint32_t start_tick;
+//  uint32_t end_tick;
+//
+//  volatile uint32_t red_time_ms;
+//  volatile uint32_t green_time_ms;
+//  volatile uint32_t blue_time_ms;
+
+  /* Red */
+//  start_tick = HAL_GetTick();
+//  ILI9341_FillScreen(ILI9341_RED);
+//  end_tick = HAL_GetTick();
+//  red_time_ms = end_tick - start_tick;
+
+  /* Green */
+//  start_tick = HAL_GetTick();
+//  ILI9341_FillScreen(ILI9341_GREEN);
+//  end_tick = HAL_GetTick();
+//  green_time_ms = end_tick - start_tick;
+
+  /* Blue */
+//  start_tick = HAL_GetTick();
+//  ILI9341_FillScreen(ILI9341_BLUE);
+//  end_tick = HAL_GetTick();
+//  blue_time_ms = end_tick - start_tick;
+//  Dashboard_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  DashboardStats stats = {
-        .rx_kbps = 1200,
-        .tx_kbps = 500,
-        .cpu_usage = 20,
-        .mem_usage = 40
-    };
+  uint32_t start_tick;
+  /* ---------- RED ---------- */
+
+  start_tick = HAL_GetTick();
+
+  if (ILI9341_FillScreenDMA(ILI9341_RED) != ILI9341_OK)
+  {
+      Error_Handler();
+  }
+
+  while (ILI9341_DMA_IsBusy())
+  {
+      ILI9341_DMA_Service();
+
+      /* Simulated CPU work */
+      dma_loop_counter++;
+  }
+
+  if (ILI9341_DMA_HasError())
+  {
+      dma_test_error = 1U;
+      Error_Handler();
+  }
+
+  dma_red_ms = HAL_GetTick() - start_tick;
+
+  HAL_Delay(500);
+
+
+  /* ---------- GREEN ---------- */
+
+  start_tick = HAL_GetTick();
+
+  if (ILI9341_FillScreenDMA(ILI9341_GREEN) != ILI9341_OK)
+  {
+      Error_Handler();
+  }
+
+  while (ILI9341_DMA_IsBusy())
+  {
+      ILI9341_DMA_Service();
+      dma_loop_counter++;
+  }
+
+  if (ILI9341_DMA_HasError())
+  {
+      dma_test_error = 2U;
+      Error_Handler();
+  }
+
+  dma_green_ms = HAL_GetTick() - start_tick;
+
+  HAL_Delay(500);
+
+
+  /* ---------- BLUE ---------- */
+
+  start_tick = HAL_GetTick();
+
+  if (ILI9341_FillScreenDMA(ILI9341_BLUE) != ILI9341_OK)
+  {
+      Error_Handler();
+  }
+
+  while (ILI9341_DMA_IsBusy())
+  {
+      ILI9341_DMA_Service();
+      dma_loop_counter++;
+  }
+
+  if (ILI9341_DMA_HasError())
+  {
+      dma_test_error = 3U;
+      Error_Handler();
+  }
+
+  dma_blue_ms = HAL_GetTick() - start_tick;
+
+//  DashboardStats stats = {
+//        .rx_kbps = 1200,
+//        .tx_kbps = 500,
+//        .cpu_usage = 20,
+//        .mem_usage = 40
+//    };
   while (1)
   {
-	Dashboard_Update(&stats);
-
-	/* 模擬網路流量增加 */
-	stats.rx_kbps += 100;
-	stats.tx_kbps += 50;
-
-	if (stats.rx_kbps > 5000)
-		stats.rx_kbps = 1000;
-
-	if (stats.tx_kbps > 2000)
-		stats.tx_kbps = 300;
-
-	stats.cpu_usage =
-		(stats.cpu_usage + 5) % 100;
-
-	stats.mem_usage =
-		(stats.mem_usage + 3) % 100;
-
-	HAL_Delay(1000);
+//	Dashboard_Update(&stats);
+//
+//	/* 模擬網路流量增加 */
+//	stats.rx_kbps += 100;
+//	stats.tx_kbps += 50;
+//
+//	if (stats.rx_kbps > 5000)
+//		stats.rx_kbps = 1000;
+//
+//	if (stats.tx_kbps > 2000)
+//		stats.tx_kbps = 300;
+//
+//	stats.cpu_usage =
+//		(stats.cpu_usage + 5) % 100;
+//
+//	stats.mem_usage =
+//		(stats.mem_usage + 3) % 100;
+//
+//	HAL_Delay(1000);
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -217,7 +328,7 @@ static void MX_SPI2_Init(void)
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -229,6 +340,22 @@ static void MX_SPI2_Init(void)
   /* USER CODE BEGIN SPI2_Init 2 */
 
   /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
 
 }
 
@@ -274,7 +401,17 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_SPI_TxCpltCallback(
+    SPI_HandleTypeDef *hspi)
+{
+    ILI9341_DMA_TxCompleteCallback(hspi);
+}
 
+void HAL_SPI_ErrorCallback(
+    SPI_HandleTypeDef *hspi)
+{
+    ILI9341_DMA_ErrorCallback(hspi);
+}
 /* USER CODE END 4 */
 
 /**
