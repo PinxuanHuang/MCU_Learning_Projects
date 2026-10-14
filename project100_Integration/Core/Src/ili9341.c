@@ -39,7 +39,7 @@ extern SPI_HandleTypeDef hspi2;
 
 /* DMA Configuration */
 #define ILI9341_DMA_TIMEOUT_MS 1000U
-#define ILI9341_DMA_PIXELS 256U
+#define ILI9341_DMA_PIXELS 2048U
 
 typedef enum
 {
