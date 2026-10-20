@@ -28,6 +28,8 @@ static void draw_label(uint16_t x,
 
 void Dashboard_Init(void)
 {
+    /* Must be called only while ILI9341 DMA is idle. */
+    has_last_stats = false;
     ILI9341_FillScreen(BG);
 
     /* Title */
