@@ -34,7 +34,9 @@
 typedef enum {
     ILI9341_OK = 0,
     ILI9341_ERROR,
-    ILI9341_BAD_ARG
+    ILI9341_BAD_ARG,
+    ILI9341_BUSY,
+    ILI9341_TIMEOUT
 } ILI9341_Status;
 
 ILI9341_Status ILI9341_Init(void);
@@ -69,6 +71,8 @@ void ILI9341_DMA_Service(void);
 
 uint8_t ILI9341_DMA_IsBusy(void);
 uint8_t ILI9341_DMA_HasError(void);
+ILI9341_Status ILI9341_DMA_Wait(uint32_t timeout_ms);
+ILI9341_Status ILI9341_DMA_Recover(void);
 
 /* Called from HAL SPI callbacks */
 void ILI9341_DMA_TxCompleteCallback(
