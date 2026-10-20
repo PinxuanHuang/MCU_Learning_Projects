@@ -46,12 +46,14 @@ SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef hdma_spi2_tx;
 
 /* USER CODE BEGIN PV */
-volatile uint32_t dma_red_ms = 0;
-volatile uint32_t dma_green_ms = 0;
-volatile uint32_t dma_blue_ms = 0;
-
-volatile uint32_t dma_loop_counter = 0;
-volatile uint8_t dma_test_error = 0;
+/* Read these in CubeIDE Expressions. */
+volatile uint32_t dma_safety_ms = 0U;
+volatile uint32_t dma_safety_fail = 0U;
+static DashboardStats router_stats = {
+    .rx_kbps = 1200U, .tx_kbps = 500U,
+    .cpu_usage = 20U, .mem_usage = 40U
+};
+static uint32_t last_update_ms = 0U;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,157 +102,62 @@ int main(void)
   MX_DMA_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  if (ILI9341_Init() != ILI9341_OK)
-  {
-      Error_Handler();
-  }
-
-  if (ILI9341_SetRotation(3) != ILI9341_OK)
-  {
-      Error_Handler();
-  }
-
+  if (ILI9341_Init() != ILI9341_OK) Error_Handler();
+  /* Repo's working landscape orientation is 3, not 1. */
+  if (ILI9341_SetRotation(3) != ILI9341_OK) Error_Handler();
   if (ILI9341_Width() != ILI9341_NATIVE_HEIGHT ||
-      ILI9341_Height() != ILI9341_NATIVE_WIDTH)
+      ILI9341_Height() != ILI9341_NATIVE_WIDTH) Error_Handler();
+
+  /* Safety regression: running DMA must reject blocking drawing. */
+  uint32_t safety_start = HAL_GetTick();
+  if (ILI9341_FillScreenDMA(ILI9341_BLUE) != ILI9341_OK)
   {
+      dma_safety_fail = 1U;
       Error_Handler();
   }
+  if (ILI9341_FillRect(0U, 0U, 10U, 10U, ILI9341_WHITE) != ILI9341_BUSY)
+  {
+      dma_safety_fail = 2U;
+      Error_Handler();
+  }
+  if (ILI9341_DMA_Wait(1500U) != ILI9341_OK)
+  {
+      dma_safety_fail = 3U;
+      Error_Handler();
+  }
+  dma_safety_ms = HAL_GetTick() - safety_start;
 
-//  uint32_t start_tick;
-//  uint32_t end_tick;
-//
-//  volatile uint32_t red_time_ms;
-//  volatile uint32_t green_time_ms;
-//  volatile uint32_t blue_time_ms;
-
-  /* Red */
-//  start_tick = HAL_GetTick();
-//  ILI9341_FillScreen(ILI9341_RED);
-//  end_tick = HAL_GetTick();
-//  red_time_ms = end_tick - start_tick;
-
-  /* Green */
-//  start_tick = HAL_GetTick();
-//  ILI9341_FillScreen(ILI9341_GREEN);
-//  end_tick = HAL_GetTick();
-//  green_time_ms = end_tick - start_tick;
-
-  /* Blue */
-//  start_tick = HAL_GetTick();
-//  ILI9341_FillScreen(ILI9341_BLUE);
-//  end_tick = HAL_GetTick();
-//  blue_time_ms = end_tick - start_tick;
-//  Dashboard_Init();
+  /* Resume the original known-working blocking Dashboard path. */
+  Dashboard_Init();
+  Dashboard_Update(&router_stats);
+  last_update_ms = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t start_tick;
-  /* ---------- RED ---------- */
-
-  start_tick = HAL_GetTick();
-
-  if (ILI9341_FillScreenDMA(ILI9341_RED) != ILI9341_OK)
-  {
-      Error_Handler();
-  }
-
-  while (ILI9341_DMA_IsBusy())
-  {
-      ILI9341_DMA_Service();
-
-      /* Simulated CPU work */
-      dma_loop_counter++;
-  }
-
-  if (ILI9341_DMA_HasError())
-  {
-      dma_test_error = 1U;
-      Error_Handler();
-  }
-
-  dma_red_ms = HAL_GetTick() - start_tick;
-
-  HAL_Delay(500);
-
-
-  /* ---------- GREEN ---------- */
-
-  start_tick = HAL_GetTick();
-
-  if (ILI9341_FillScreenDMA(ILI9341_GREEN) != ILI9341_OK)
-  {
-      Error_Handler();
-  }
-
-  while (ILI9341_DMA_IsBusy())
-  {
-      ILI9341_DMA_Service();
-      dma_loop_counter++;
-  }
-
-  if (ILI9341_DMA_HasError())
-  {
-      dma_test_error = 2U;
-      Error_Handler();
-  }
-
-  dma_green_ms = HAL_GetTick() - start_tick;
-
-  HAL_Delay(500);
-
-
-  /* ---------- BLUE ---------- */
-
-  start_tick = HAL_GetTick();
-
-  if (ILI9341_FillScreenDMA(ILI9341_BLUE) != ILI9341_OK)
-  {
-      Error_Handler();
-  }
-
-  while (ILI9341_DMA_IsBusy())
-  {
-      ILI9341_DMA_Service();
-      dma_loop_counter++;
-  }
-
-  if (ILI9341_DMA_HasError())
-  {
-      dma_test_error = 3U;
-      Error_Handler();
-  }
-
-  dma_blue_ms = HAL_GetTick() - start_tick;
-
-//  DashboardStats stats = {
-//        .rx_kbps = 1200,
-//        .tx_kbps = 500,
-//        .cpu_usage = 20,
-//        .mem_usage = 40
-//    };
   while (1)
   {
-//	Dashboard_Update(&stats);
-//
-//	/* 模擬網路流量增加 */
-//	stats.rx_kbps += 100;
-//	stats.tx_kbps += 50;
-//
-//	if (stats.rx_kbps > 5000)
-//		stats.rx_kbps = 1000;
-//
-//	if (stats.tx_kbps > 2000)
-//		stats.tx_kbps = 300;
-//
-//	stats.cpu_usage =
-//		(stats.cpu_usage + 5) % 100;
-//
-//	stats.mem_usage =
-//		(stats.mem_usage + 3) % 100;
-//
-//	HAL_Delay(1000);
-	  HAL_Delay(1000);
+    ILI9341_DMA_Service();
+    if (ILI9341_DMA_HasError())
+    {
+        /* Do not silently clear: preserve evidence for debugger. */
+        dma_safety_fail = 4U;
+        Error_Handler();
+    }
+
+    uint32_t now = HAL_GetTick();
+    if (!ILI9341_DMA_IsBusy() &&
+        (uint32_t)(now - last_update_ms) >= 1000U)
+    {
+        last_update_ms = now;
+        router_stats.rx_kbps += 100U;
+        router_stats.tx_kbps += 50U;
+        if (router_stats.rx_kbps > 5000U) router_stats.rx_kbps = 1000U;
+        if (router_stats.tx_kbps > 2000U) router_stats.tx_kbps = 300U;
+        router_stats.cpu_usage = (uint8_t)((router_stats.cpu_usage + 5U) % 100U);
+        router_stats.mem_usage = (uint8_t)((router_stats.mem_usage + 3U) % 100U);
+        Dashboard_Update(&router_stats);
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
