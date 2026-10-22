@@ -21,5 +21,7 @@ typedef struct
 
 void Dashboard_Init(void);
 void Dashboard_Update(const DashboardStats *stats);
+void Dashboard_Service(void);
+uint8_t Dashboard_IsBusy(void);
 
 #endif /* INC_DASHBOARD_H_ */

@@ -137,7 +137,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    ILI9341_DMA_Service();
+    Dashboard_Service();
     if (ILI9341_DMA_HasError())
     {
         /* Do not silently clear: preserve evidence for debugger. */
@@ -146,7 +146,7 @@ int main(void)
     }
 
     uint32_t now = HAL_GetTick();
-    if (!ILI9341_DMA_IsBusy() &&
+    if (!Dashboard_IsBusy() &&
         (uint32_t)(now - last_update_ms) >= 1000U)
     {
         last_update_ms = now;

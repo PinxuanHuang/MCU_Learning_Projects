@@ -13,6 +13,17 @@
 static DashboardStats last_stats;
 static bool has_last_stats = false;
 
+/* Foreground-only, single-display DMA bar update scheduler.
+ * Text and static widgets stay on the blocking path in this milestone.
+ */
+static uint16_t cpu_bar_width = 0U;
+static uint16_t mem_bar_width = 0U;
+static uint16_t cpu_target_width = 0U;
+static uint16_t mem_target_width = 0U;
+static uint8_t active_bar = 0U; /* 0=none, 1=CPU, 2=RAM */
+static uint8_t bar_pending = 0U; /* bit0=CPU, bit1=RAM */
+
+
 #define BG       0x1082
 #define PANEL    0x2104
 #define FG       ILI9341_WHITE
@@ -29,7 +40,12 @@ static void draw_label(uint16_t x,
 void Dashboard_Init(void)
 {
     /* Must be called only while ILI9341 DMA is idle. */
+    /* Never reset the screen while a DMA transfer is active. */
+    if (ILI9341_DMA_IsBusy() || ILI9341_DMA_HasError()) return;
     has_last_stats = false;
+    cpu_bar_width = mem_bar_width = 0U;
+    cpu_target_width = mem_target_width = 0U;
+    active_bar = bar_pending = 0U;
     ILI9341_FillScreen(BG);
 
     /* Title */
@@ -54,8 +70,9 @@ void Dashboard_Init(void)
 
 void Dashboard_Update(const DashboardStats *stats)
 {
-    if (stats == NULL)
+    if (stats == NULL || Dashboard_IsBusy() || ILI9341_DMA_HasError())
         return;
+    /* Single foreground caller: finish all blocking text before DMA bars. */
 
     char buf[32];
 
@@ -110,30 +127,8 @@ void Dashboard_Update(const DashboardStats *stats)
         ILI9341_DrawString(
             65, 128, buf, FG, BG, 1);
 
-        /* Repaint only the changed portion of the bar */
-        uint16_t old_w =
-            has_last_stats
-            ? (uint16_t)(280U * last_cpu / 100U)
-            : 0U;
-
-        uint16_t new_w =
-            (uint16_t)(280U * cpu / 100U);
-
-        if (!has_last_stats)
-            ILI9341_FillRect(12, 148, 280, 12, PANEL);
-
-        if (new_w > old_w)
-        {
-            ILI9341_FillRect(
-                12 + old_w, 148,
-                new_w - old_w, 12, CYAN);
-        }
-        else if (new_w < old_w)
-        {
-            ILI9341_FillRect(
-                12 + new_w, 148,
-                old_w - new_w, 12, PANEL);
-        }
+        cpu_target_width = (uint16_t)(280U * cpu / 100U);
+        if (cpu_target_width != cpu_bar_width) bar_pending |= 1U;
     }
 
     /* RAM changed */
@@ -147,31 +142,59 @@ void Dashboard_Update(const DashboardStats *stats)
         ILI9341_DrawString(
             65, 175, buf, FG, BG, 1);
 
-        uint16_t old_w =
-            has_last_stats
-            ? (uint16_t)(280U * last_mem / 100U)
-            : 0U;
-
-        uint16_t new_w =
-            (uint16_t)(280U * mem / 100U);
-
-        if (!has_last_stats)
-            ILI9341_FillRect(12, 195, 280, 12, PANEL);
-
-        if (new_w > old_w)
-        {
-            ILI9341_FillRect(
-                12 + old_w, 195,
-                new_w - old_w, 12, GREEN);
-        }
-        else if (new_w < old_w)
-        {
-            ILI9341_FillRect(
-                12 + new_w, 195,
-                old_w - new_w, 12, PANEL);
-        }
+        mem_target_width = (uint16_t)(280U * mem / 100U);
+        if (mem_target_width != mem_bar_width) bar_pending |= 2U;
     }
 
     last_stats = *stats;
     has_last_stats = true;
+}
+
+/* Returns true while either progress bar is queued or DMA is active.
+ * Call Dashboard_Service() continuously from the foreground main loop.
+ */
+uint8_t Dashboard_IsBusy(void)
+{
+    return (uint8_t)(active_bar != 0U || bar_pending != 0U ||
+                     ILI9341_DMA_IsBusy());
+}
+
+void Dashboard_Service(void)
+{
+    ILI9341_Status status;
+    uint16_t from, to, y, color;
+    uint8_t which;
+
+    ILI9341_DMA_Service();
+    if (ILI9341_DMA_HasError()) return; /* main handles fault */
+    if (ILI9341_DMA_IsBusy()) return;
+
+    /* DMA has completed; only now update the committed bar width. */
+    if (active_bar == 1U)
+        cpu_bar_width = cpu_target_width;
+    else if (active_bar == 2U)
+        mem_bar_width = mem_target_width;
+    active_bar = 0U;
+
+    if (bar_pending == 0U) return;
+    which = (bar_pending & 1U) ? 1U : 2U;
+    from = which == 1U ? cpu_bar_width : mem_bar_width;
+    to   = which == 1U ? cpu_target_width : mem_target_width;
+    y    = which == 1U ? 148U : 195U;
+    if (from == to)
+    {
+        bar_pending &= (uint8_t)~(which == 1U ? 1U : 2U);
+        return;
+    }
+    color = to > from ? (which == 1U ? CYAN : GREEN) : PANEL;
+    status = ILI9341_FillRectDMA((uint16_t)(12U + (to > from ? from : to)),
+                                  y,
+                                  (uint16_t)(to > from ? to - from : from - to),
+                                  12U, color);
+    if (status == ILI9341_OK)
+    {
+        active_bar = which;
+        bar_pending &= (uint8_t)~(which == 1U ? 1U : 2U);
+    }
+    /* On non-OK, keep the pending bit. DMA error is handled by main. */
 }
