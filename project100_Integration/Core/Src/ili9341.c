@@ -290,6 +290,15 @@ static const uint8_t font5x7[95][5] = {
 {0x44,0x64,0x54,0x4c,0x44}, {0x00,0x08,0x36,0x41,0x00}, {0x00,0x00,0x7f,0x00,0x00},
 {0x00,0x41,0x36,0x08,0x00}, {0x10,0x08,0x08,0x10,0x08}
 };
+/* Shared glyph accessor for the RAM tile renderer. No SPI transaction. */
+uint8_t ILI9341_Font5x7Column(char ch, uint8_t column)
+{
+    unsigned char c = (unsigned char)ch;
+    if (column >= 5U) return 0U;
+    if (c < 32U || c > 126U) c = (unsigned char)'?';
+    return font5x7[c - 32U][column];
+}
+
 ILI9341_Status ILI9341_DrawChar(uint16_t x,uint16_t y,char ch,uint16_t fg,uint16_t bg,uint8_t scale)
 {
     if (tft_ready() != ILI9341_OK) return tft_ready();

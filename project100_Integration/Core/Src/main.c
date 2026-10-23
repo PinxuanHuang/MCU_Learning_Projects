@@ -170,8 +170,8 @@ int main(void)
     }
 
     uint32_t now = HAL_GetTick();
-    if (!Dashboard_IsBusy() &&
-        (uint32_t)(now - last_update_ms) >= 1000U)
+    /* Statistics acquisition must not wait for the display DMA queue. */
+    if ((uint32_t)(now - last_update_ms) >= 1000U)
     {
         last_update_ms = now;
         router_stats.rx_kbps += 100U;

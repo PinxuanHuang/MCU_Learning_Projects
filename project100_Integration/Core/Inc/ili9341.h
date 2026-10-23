@@ -56,6 +56,9 @@ ILI9341_Status ILI9341_DrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, 
 ILI9341_Status ILI9341_DrawChar(uint16_t x, uint16_t y, char ch, uint16_t fg, uint16_t bg, uint8_t scale);
 ILI9341_Status ILI9341_DrawString(uint16_t x, uint16_t y, const char *str, uint16_t fg, uint16_t bg, uint8_t scale);
 
+/* Read-only font glyph accessor (5 columns, 7 pixel rows). */
+uint8_t ILI9341_Font5x7Column(char ch, uint8_t column);
+
 /* DMA TX API */
 ILI9341_Status ILI9341_FillRectDMA(
     uint16_t x,
