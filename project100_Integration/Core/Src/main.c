@@ -19,6 +19,7 @@
 #include "dashboard.h"
 #include "m14_dma_fault_test.h"
 #include "m14_pixel_dma_test.h"
+#include "m14_perf.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -153,7 +154,9 @@ int main(void)
 
   /* Resume the original known-working blocking Dashboard path. */
   Dashboard_Init();
+  M14_Perf_Init(HAL_GetTick());
   Dashboard_Update(&router_stats);
+  M14_Perf_OnStatsQueued(HAL_GetTick());
   last_update_ms = HAL_GetTick();
   /* USER CODE END 2 */
 
@@ -161,15 +164,20 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    uint32_t service_begin = M14_Perf_CycleNow();
     Dashboard_Service();
-    if (ILI9341_DMA_HasError())
+    M14_Perf_RecordService(service_begin);
+
+    uint32_t now = HAL_GetTick();
+    uint8_t dma_fault = ILI9341_DMA_HasError();
+    M14_Perf_Poll(now, Dashboard_IsBusy(), dma_fault);
+    if (dma_fault)
     {
         /* Do not silently clear: preserve evidence for debugger. */
         dma_safety_fail = 4U;
         Error_Handler();
     }
 
-    uint32_t now = HAL_GetTick();
     /* Statistics acquisition must not wait for the display DMA queue. */
     if ((uint32_t)(now - last_update_ms) >= 1000U)
     {
@@ -181,6 +189,7 @@ int main(void)
         router_stats.cpu_usage = (uint8_t)((router_stats.cpu_usage + 5U) % 100U);
         router_stats.mem_usage = (uint8_t)((router_stats.mem_usage + 3U) % 100U);
         Dashboard_Update(&router_stats);
+        M14_Perf_OnStatsQueued(HAL_GetTick());
     }
     /* USER CODE END WHILE */
 
