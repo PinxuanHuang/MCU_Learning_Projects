@@ -48,6 +48,13 @@ typedef enum
     TFT_DMA_ERROR
 } TFT_DMA_State;
 
+/* Which payload should be staged into the DMA-accessible TX buffer. */
+typedef enum
+{
+    TFT_DMA_SOURCE_SOLID = 0,
+    TFT_DMA_SOURCE_PIXELS
+} TFT_DMA_Source;
+
 /* Must remain valid throughout DMA transfers */
 static uint8_t dma_tx_buf[ILI9341_DMA_PIXELS * 2U];
 
@@ -62,6 +69,13 @@ static uint32_t dma_remaining_pixels = 0;
 static uint16_t dma_current_pixels = 0;
 
 static uint32_t dma_start_tick = 0;
+
+/* Pixel source is borrowed (not owned): caller keeps it stable until IDLE. */
+static TFT_DMA_Source dma_source = TFT_DMA_SOURCE_SOLID;
+static const uint16_t *dma_src_pixels = NULL;
+static uint16_t dma_src_stride = 0U;
+static uint16_t dma_visible_width = 0U;
+static uint32_t dma_sent_pixels = 0U;
 
 static uint16_t s_width = ILI9341_NATIVE_WIDTH;
 static uint16_t s_height = ILI9341_NATIVE_HEIGHT;
@@ -325,6 +339,28 @@ static ILI9341_Status dma_start_chunk(void)
     pixels = (dma_remaining_pixels > ILI9341_DMA_PIXELS)
            ? ILI9341_DMA_PIXELS : (uint16_t)dma_remaining_pixels;
     dma_current_pixels = pixels;
+
+    /* The ILI9341 expects RGB565 high-byte first. STM32 is little-endian,
+     * so a direct uint16_t DMA would swap the bytes. Convert into the same
+     * stable 4096-byte TX staging buffer used by FillRectDMA().
+     */
+    if (dma_source == TFT_DMA_SOURCE_PIXELS)
+    {
+        uint32_t row = dma_sent_pixels / dma_visible_width;
+        uint32_t col = dma_sent_pixels % dma_visible_width;
+        for (uint16_t i = 0U; i < pixels; ++i)
+        {
+            uint16_t color = dma_src_pixels[row * (uint32_t)dma_src_stride + col];
+            dma_tx_buf[2U * i] = (uint8_t)(color >> 8);
+            dma_tx_buf[2U * i + 1U] = (uint8_t)color;
+            if (++col == dma_visible_width)
+            {
+                col = 0U;
+                ++row;
+            }
+        }
+    }
+
     dma_chunk_done = 0U;
     dma_inflight = 1U; /* Arm before start: callback may run immediately. */
     dma_start_tick = HAL_GetTick();
@@ -349,6 +385,7 @@ static ILI9341_Status dma_stop_fault(void)
     dma_inflight = 0U;
     dma_chunk_done = 0U;
     dma_current_pixels = 0U;
+    dma_src_pixels = NULL;
     cs_high();
     dma_state = TFT_DMA_ERROR; /* Fault remains latched until Recovery. */
     return ILI9341_ERROR;
@@ -373,6 +410,11 @@ ILI9341_Status ILI9341_FillRectDMA(
     s = address_window(x, y, (uint16_t)(x+w-1U), (uint16_t)(y+h-1U));
     if (s != ILI9341_OK) return s;
 
+    dma_source = TFT_DMA_SOURCE_SOLID;
+    dma_src_pixels = NULL;
+    dma_src_stride = 0U;
+    dma_visible_width = 0U;
+    dma_sent_pixels = 0U;
     dma_remaining_pixels = (uint32_t)w * h;
     dma_current_pixels = 0U;
     dma_chunk_done = 0U;
@@ -394,6 +436,51 @@ ILI9341_Status ILI9341_FillScreenDMA(uint16_t color)
     return ILI9341_FillRectDMA(0U, 0U, s_width, s_height, color);
 }
 
+/* Asynchronous RGB565 rectangle blit.
+ * Pixels: row-major uint16_t RGB565 with stride=original width.
+ * Pixels must remain valid and unmodified until DMA_IsBusy() is false.
+ * Call from foreground only; do not call simultaneously from ISR/RTOS tasks.
+ * Right/bottom clipping preserves original input row stride.
+ */
+ILI9341_Status ILI9341_WriteRectDMA(uint16_t x, uint16_t y,
+                                    uint16_t w, uint16_t h,
+                                    const uint16_t *pixels)
+{
+    ILI9341_Status s = tft_ready();
+    uint16_t original_width = w;
+    if (s != ILI9341_OK) return s;
+    if (!s_initialized) return ILI9341_ERROR;
+    if (pixels == NULL) return ILI9341_BAD_ARG;
+    if (w == 0U || h == 0U || x >= s_width || y >= s_height)
+        return ILI9341_OK;
+    if (w > s_width - x) w = s_width - x;
+    if (h > s_height - y) h = s_height - y;
+
+    s = address_window(x, y, (uint16_t)(x + w - 1U),
+                       (uint16_t)(y + h - 1U));
+    if (s != ILI9341_OK) return s;
+
+    dma_source = TFT_DMA_SOURCE_PIXELS;
+    dma_src_pixels = pixels;
+    dma_src_stride = original_width;
+    dma_visible_width = w;
+    dma_sent_pixels = 0U;
+    dma_remaining_pixels = (uint32_t)w * h;
+    dma_current_pixels = 0U;
+    dma_chunk_done = 0U;
+    dma_error = 0U;
+    dma_inflight = 0U;
+    dma_state = TFT_DMA_ACTIVE;
+    dc_data();
+    cs_low();
+    if (dma_start_chunk() != ILI9341_OK)
+    {
+        (void)dma_stop_fault();
+        return ILI9341_ERROR;
+    }
+    return ILI9341_OK; /* Transaction started, not finished. */
+}
+
 void ILI9341_DMA_Service(void)
 {
     if (dma_state != TFT_DMA_ACTIVE) return;
@@ -407,6 +494,7 @@ void ILI9341_DMA_Service(void)
         dma_chunk_done = 0U;
         dma_inflight = 0U;
         dma_remaining_pixels -= dma_current_pixels;
+        dma_sent_pixels += dma_current_pixels;
         dma_current_pixels = 0U;
     }
     if (dma_inflight)
@@ -421,6 +509,7 @@ void ILI9341_DMA_Service(void)
     if (dma_remaining_pixels == 0U)
     {
         cs_high();
+        dma_src_pixels = NULL; /* Release borrowed image buffer. */
         dma_state = TFT_DMA_IDLE;
         return;
     }
@@ -465,6 +554,8 @@ ILI9341_Status ILI9341_DMA_Recover(void)
     dma_inflight = 0U;
     dma_remaining_pixels = 0U;
     dma_current_pixels = 0U;
+    dma_sent_pixels = 0U;
+    dma_src_pixels = NULL;
     dma_state = TFT_DMA_IDLE;
     return ILI9341_OK; /* Caller must redraw after interrupted transaction. */
 }

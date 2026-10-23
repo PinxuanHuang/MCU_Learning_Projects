@@ -67,6 +67,13 @@ ILI9341_Status ILI9341_FillRectDMA(
 ILI9341_Status ILI9341_FillScreenDMA(
     uint16_t color);
 
+/* RGB565 row-major image, w*h pixels. Pixels remain unchanged until DMA idle.
+ * Clipping at right/bottom keeps the original source width as row stride.
+ */
+ILI9341_Status ILI9341_WriteRectDMA(uint16_t x, uint16_t y,
+                                    uint16_t w, uint16_t h,
+                                    const uint16_t *pixels);
+
 void ILI9341_DMA_Service(void);
 
 uint8_t ILI9341_DMA_IsBusy(void);

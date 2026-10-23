@@ -18,6 +18,7 @@
 #include "ili9341.h"
 #include "dashboard.h"
 #include "m14_dma_fault_test.h"
+#include "m14_pixel_dma_test.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -35,6 +36,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define M14_ENABLE_DMA_FAULT_TEST 0U  /* Set to 1 for one controlled boot test. */
+#define M14_ENABLE_PIXEL_DMA_TEST 0U  /* Set to 1 for visible color/clipping test. */
 
 /* USER CODE END PD */
 
@@ -52,6 +54,7 @@ DMA_HandleTypeDef hdma_spi2_tx;
 volatile uint32_t dma_safety_ms = 0U;
 volatile uint32_t dma_safety_fail = 0U;
 volatile uint32_t dma_fault_test_result = 0xFFFFFFFFU; /* Not run */
+volatile uint32_t pixel_dma_test_result = 0xFFFFFFFFU; /* Not run */
 static DashboardStats router_stats = {
     .rx_kbps = 1200U, .tx_kbps = 500U,
     .cpu_usage = 20U, .mem_usage = 40U
@@ -136,6 +139,15 @@ int main(void)
   if (dma_fault_test_result != (uint32_t)M14_DMA_TEST_PASS)
   {
       Error_Handler(); /* Inspect dma_fault_test_result in Debugger. */
+  }
+#endif
+
+#if M14_ENABLE_PIXEL_DMA_TEST
+  /* Visible multi-color test before Dashboard_Init() restores the screen. */
+  pixel_dma_test_result = (uint32_t)M14_PixelDMA_Test_Run();
+  if (pixel_dma_test_result != (uint32_t)M14_PIXEL_DMA_TEST_PASS)
+  {
+      Error_Handler();
   }
 #endif
 
