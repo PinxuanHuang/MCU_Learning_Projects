@@ -17,6 +17,7 @@
   */
 #include "ili9341.h"
 #include "dashboard.h"
+#include "m14_dma_fault_test.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -33,6 +34,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define M14_ENABLE_DMA_FAULT_TEST 0U  /* Set to 1 for one controlled boot test. */
 
 /* USER CODE END PD */
 
@@ -49,6 +51,7 @@ DMA_HandleTypeDef hdma_spi2_tx;
 /* Read these in CubeIDE Expressions. */
 volatile uint32_t dma_safety_ms = 0U;
 volatile uint32_t dma_safety_fail = 0U;
+volatile uint32_t dma_fault_test_result = 0xFFFFFFFFU; /* Not run */
 static DashboardStats router_stats = {
     .rx_kbps = 1200U, .tx_kbps = 500U,
     .cpu_usage = 20U, .mem_usage = 40U
@@ -126,6 +129,15 @@ int main(void)
       Error_Handler();
   }
   dma_safety_ms = HAL_GetTick() - safety_start;
+
+#if M14_ENABLE_DMA_FAULT_TEST
+  /* Run before Dashboard_Init(): tests deliberately interrupt pixel DMA. */
+  dma_fault_test_result = (uint32_t)M14_DMA_FaultTest_Run(&hspi2);
+  if (dma_fault_test_result != (uint32_t)M14_DMA_TEST_PASS)
+  {
+      Error_Handler(); /* Inspect dma_fault_test_result in Debugger. */
+  }
+#endif
 
   /* Resume the original known-working blocking Dashboard path. */
   Dashboard_Init();
