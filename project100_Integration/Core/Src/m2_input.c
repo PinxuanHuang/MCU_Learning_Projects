@@ -3,6 +3,7 @@
  * M2_Input_* must only be called from the foreground main loop.
  */
 #include "m2_input.h"
+#include "m2_touch_gesture.h"
 #include "main.h"
 #include <stddef.h>
 
@@ -14,19 +15,22 @@ static M2_InputEvent s_queue[M2_EVENT_QUEUE_SIZE];
 static uint8_t s_head, s_tail;
 static uint8_t s_raw, s_stable, s_next_target;
 static uint32_t s_change_tick;
+/* Inspect s_gesture in CubeIDE Expressions while stopped in m2_input.c. */
+static M2_Gesture s_gesture;
 volatile M2_InputStats m2_input_stats;
 
-static void enqueue(uint16_t x, uint16_t y, uint32_t tick, M2_InputSource src)
+static uint8_t enqueue(uint16_t x, uint16_t y, uint32_t tick, M2_InputSource src)
 {
     uint8_t next = (uint8_t)((s_head + 1U) % M2_EVENT_QUEUE_SIZE);
     if (next == s_tail)
     {
         m2_input_stats.events_dropped++;
-        return; /* bounded queue: do not overwrite events still pending */
+        return 0U; /* bounded queue: do not overwrite events still pending */
     }
     s_queue[s_head] = (M2_InputEvent){x, y, tick, src};
     s_head = next;
     m2_input_stats.events_queued++;
+    return 1U;
 }
 
 void M2_Input_Init(uint32_t now_ms)
@@ -45,6 +49,20 @@ void M2_Input_Init(uint32_t now_ms)
     s_stable = s_raw;
     s_change_tick = now_ms;
     m2_input_stats = (M2_InputStats){0};
+    M2_Gesture_Init(&s_gesture);
+}
+
+/* Hardware touch backend supplies calibrated screen coordinates plus
+ * contact state. Events are created only when a valid tap is released.
+ * Source buffer and SPI arbitration remain the hardware backend's job.
+ */
+uint8_t M2_Input_FeedTouchSample(uint8_t pressed, uint16_t x,
+                                 uint16_t y, uint32_t now_ms)
+{
+    M2_GestureTap tap;
+    if (!M2_Gesture_Feed(&s_gesture, pressed, x, y, now_ms, &tap))
+        return 0U;
+    return enqueue(tap.x, tap.y, tap.tick_ms, M2_INPUT_SOURCE_TOUCH);
 }
 
 void M2_Input_Service(uint32_t now_ms)
@@ -64,9 +82,21 @@ void M2_Input_Service(uint32_t now_ms)
             static const uint16_t x[4] = {90U, 90U, 80U, 80U};
             static const uint16_t y[4] = {73U, 97U, 153U, 200U};
             uint8_t n = s_next_target;
-            s_next_target = (uint8_t)((n + 1U) % 4U);
             m2_input_stats.button_presses++;
-            enqueue(x[n], y[n], now_ms, M2_INPUT_SOURCE_BUTTON_SIM);
+            /* A stable press starts a contact; no TAP has fired yet. */
+            (void)M2_Gesture_Feed(&s_gesture, 1U, x[n], y[n], now_ms,
+                                  &(M2_GestureTap){0});
+        }
+        else
+        {
+            /* A stable release completes a valid virtual touch TAP. */
+            M2_GestureTap tap;
+            if (M2_Gesture_Feed(&s_gesture, 0U, 0U, 0U, now_ms, &tap))
+            {
+                if (enqueue(tap.x, tap.y, tap.tick_ms,
+                            M2_INPUT_SOURCE_BUTTON_SIM))
+                    s_next_target = (uint8_t)((s_next_target + 1U) % 4U);
+            }
         }
     }
 }
@@ -82,7 +112,7 @@ uint8_t M2_Input_Pop(M2_InputEvent *out)
 
 void M2_Input_InjectTouchTap(uint16_t x, uint16_t y, uint32_t now_ms)
 {
-    enqueue(x, y, now_ms, M2_INPUT_SOURCE_TOUCH);
+    (void)enqueue(x, y, now_ms, M2_INPUT_SOURCE_TOUCH);
 }
 
 M2_InputTarget M2_Input_Classify(const M2_InputEvent *event)

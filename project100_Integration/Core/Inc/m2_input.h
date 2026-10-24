@@ -44,6 +44,12 @@ uint8_t M2_Input_Pop(M2_InputEvent *out);
  * driven by this API in M2.1.
  */
 void M2_Input_InjectTouchTap(uint16_t x, uint16_t y, uint32_t now_ms);
+/* New M2.1b route: feed debounced, calibrated contact samples.
+ * A TAP is queued on a valid release; return 1 if an event was queued.
+ * Coordinates on release are ignored. B1 simulator uses same recognizer.
+ */
+uint8_t M2_Input_FeedTouchSample(uint8_t pressed, uint16_t x,
+                                 uint16_t y, uint32_t now_ms);
 M2_InputTarget M2_Input_Classify(const M2_InputEvent *event);
 
 #endif /* M2_INPUT_H_ */
