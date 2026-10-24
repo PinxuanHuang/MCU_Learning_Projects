@@ -20,6 +20,7 @@
 #include "m14_dma_fault_test.h"
 #include "m14_pixel_dma_test.h"
 #include "m14_perf.h"
+#include "m2_input.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -56,6 +57,10 @@ volatile uint32_t dma_safety_ms = 0U;
 volatile uint32_t dma_safety_fail = 0U;
 volatile uint32_t dma_fault_test_result = 0xFFFFFFFFU; /* Not run */
 volatile uint32_t pixel_dma_test_result = 0xFFFFFFFFU; /* Not run */
+/* B1 demo diagnostics: values visible in CubeIDE Expressions. */
+volatile uint32_t m2_last_target = 0U;
+volatile uint32_t m2_last_source = 0U;
+volatile uint32_t m2_last_x = 0U, m2_last_y = 0U;
 static DashboardStats router_stats = {
     .rx_kbps = 1200U, .tx_kbps = 500U,
     .cpu_usage = 20U, .mem_usage = 40U
@@ -154,6 +159,8 @@ int main(void)
 
   /* Resume the original known-working blocking Dashboard path. */
   Dashboard_Init();
+  /* B1/PA0 is a safe virtual-touch input source (no TFT SPI sharing). */
+  M2_Input_Init(HAL_GetTick());
   M14_Perf_Init(HAL_GetTick());
   Dashboard_Update(&router_stats);
   M14_Perf_OnStatsQueued(HAL_GetTick());
@@ -169,6 +176,41 @@ int main(void)
     M14_Perf_RecordService(service_begin);
 
     uint32_t now = HAL_GetTick();
+    M2_Input_Service(now);
+    M2_InputEvent input_event;
+    while (M2_Input_Pop(&input_event))
+    {
+        /* Synthetic B1 taps exercise the same classification entry point
+         * a later, calibrated hardware touch driver will use. */
+        M2_InputTarget target = M2_Input_Classify(&input_event);
+        m2_last_target = (uint32_t)target;
+        m2_last_source = (uint32_t)input_event.source;
+        m2_last_x = input_event.x;
+        m2_last_y = input_event.y;
+        switch (target)
+        {
+            case M2_INPUT_TARGET_RX:
+                router_stats.rx_kbps += 1000U;
+                break;
+            case M2_INPUT_TARGET_TX:
+                router_stats.tx_kbps += 500U;
+                break;
+            case M2_INPUT_TARGET_CPU:
+                router_stats.cpu_usage =
+                    (uint8_t)(((uint32_t)router_stats.cpu_usage + 25U) % 101U);
+                break;
+            case M2_INPUT_TARGET_RAM:
+                router_stats.mem_usage =
+                    (uint8_t)(((uint32_t)router_stats.mem_usage + 25U) % 101U);
+                break;
+            default: break;
+        }
+        if (target != M2_INPUT_TARGET_NONE)
+        {
+            Dashboard_Update(&router_stats);
+            M14_Perf_OnStatsQueued(now);
+        }
+    }
     uint8_t dma_fault = ILI9341_DMA_HasError();
     M14_Perf_Poll(now, Dashboard_IsBusy(), dma_fault);
     if (dma_fault)
