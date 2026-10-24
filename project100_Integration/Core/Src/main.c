@@ -21,6 +21,7 @@
 #include "m14_pixel_dma_test.h"
 #include "m14_perf.h"
 #include "m2_input.h"
+#include "m2_touch_raw.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -39,6 +40,7 @@
 /* USER CODE BEGIN PD */
 #define M14_ENABLE_DMA_FAULT_TEST 0U  /* Set to 1 for one controlled boot test. */
 #define M14_ENABLE_PIXEL_DMA_TEST 0U  /* Set to 1 for visible color/clipping test. */
+#define M2_ENABLE_TOUCH_RAW_TEST 1U  /* Enable only after wiring PC6..PC10. */
 
 /* USER CODE END PD */
 
@@ -161,6 +163,9 @@ int main(void)
   Dashboard_Init();
   /* B1/PA0 is a safe virtual-touch input source (no TFT SPI sharing). */
   M2_Input_Init(HAL_GetTick());
+#if M2_ENABLE_TOUCH_RAW_TEST
+  M2_TouchRaw_Init();
+#endif
   M14_Perf_Init(HAL_GetTick());
   Dashboard_Update(&router_stats);
   M14_Perf_OnStatsQueued(HAL_GetTick());
@@ -177,6 +182,9 @@ int main(void)
 
     uint32_t now = HAL_GetTick();
     M2_Input_Service(now);
+#if M2_ENABLE_TOUCH_RAW_TEST
+    M2_TouchRaw_Service(now);
+#endif
     M2_InputEvent input_event;
     while (M2_Input_Pop(&input_event))
     {
