@@ -103,6 +103,12 @@ void M2_TouchRaw_Init(void)
     m2_touch_raw_stats = (M2_TouchRawStats){0};
     m2_touch_raw_stats.min_x = 4095U;
     m2_touch_raw_stats.min_y = 4095U;
+    /* MCU reset need not reset the external controller. Complete a PD0=0
+     * conversion before waiting for PENIRQ, so pen detection is enabled.
+     * This startup conversion is discarded rather than counted as a touch.
+     */
+    (void)read12(TOUCH_CMD_Y);
+    HAL_Delay(1U);
     m2_touch_raw_stats.initialized = 1U;
     s_last_sample_ms = HAL_GetTick() - TOUCH_SAMPLE_PERIOD_MS;
 }

@@ -1,25 +1,26 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2026 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 #include "ili9341.h"
 #include "dashboard.h"
 #include "m14_dma_fault_test.h"
 #include "m14_pixel_dma_test.h"
 #include "m14_perf.h"
+#include "m2_calibration.h"
 #include "m2_input.h"
 #include "m2_touch_raw.h"
 /* USER CODE END Header */
@@ -38,9 +39,14 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define M14_ENABLE_DMA_FAULT_TEST 0U  /* Set to 1 for one controlled boot test. */
-#define M14_ENABLE_PIXEL_DMA_TEST 0U  /* Set to 1 for visible color/clipping test. */
-#define M2_ENABLE_TOUCH_RAW_TEST 1U  /* Enable only after wiring PC6..PC10. */
+#define M14_ENABLE_DMA_FAULT_TEST 0U   /* Set to 1 for one controlled boot test. */
+#define M14_ENABLE_PIXEL_DMA_TEST 0U   /* Set to 1 for visible color/clipping test. */
+#define M2_ENABLE_TOUCH_RAW_TEST 1U    /* PC6..PC10 touch wiring verified on board. */
+#define M2_ENABLE_TOUCH_CALIBRATION 1U /* Set to 1 for five-point boot calibration. */
+
+#if M2_ENABLE_TOUCH_CALIBRATION && !M2_ENABLE_TOUCH_RAW_TEST
+#error "Touch calibration requires M2_ENABLE_TOUCH_RAW_TEST=1"
+#endif
 
 /* USER CODE END PD */
 
@@ -64,9 +70,7 @@ volatile uint32_t m2_last_target = 0U;
 volatile uint32_t m2_last_source = 0U;
 volatile uint32_t m2_last_x = 0U, m2_last_y = 0U;
 static DashboardStats router_stats = {
-    .rx_kbps = 1200U, .tx_kbps = 500U,
-    .cpu_usage = 20U, .mem_usage = 40U
-};
+    .rx_kbps = 1200U, .tx_kbps = 500U, .cpu_usage = 20U, .mem_usage = 40U};
 static uint32_t last_update_ms = 0U;
 /* USER CODE END PV */
 
@@ -85,9 +89,9 @@ static void MX_SPI2_Init(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -116,28 +120,31 @@ int main(void)
   MX_DMA_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  if (ILI9341_Init() != ILI9341_OK) Error_Handler();
+  if (ILI9341_Init() != ILI9341_OK)
+    Error_Handler();
   /* Repo's working landscape orientation is 3, not 1. */
-  if (ILI9341_SetRotation(3) != ILI9341_OK) Error_Handler();
+  if (ILI9341_SetRotation(3) != ILI9341_OK)
+    Error_Handler();
   if (ILI9341_Width() != ILI9341_NATIVE_HEIGHT ||
-      ILI9341_Height() != ILI9341_NATIVE_WIDTH) Error_Handler();
+      ILI9341_Height() != ILI9341_NATIVE_WIDTH)
+    Error_Handler();
 
   /* Safety regression: running DMA must reject blocking drawing. */
   uint32_t safety_start = HAL_GetTick();
   if (ILI9341_FillScreenDMA(ILI9341_BLUE) != ILI9341_OK)
   {
-      dma_safety_fail = 1U;
-      Error_Handler();
+    dma_safety_fail = 1U;
+    Error_Handler();
   }
   if (ILI9341_FillRect(0U, 0U, 10U, 10U, ILI9341_WHITE) != ILI9341_BUSY)
   {
-      dma_safety_fail = 2U;
-      Error_Handler();
+    dma_safety_fail = 2U;
+    Error_Handler();
   }
   if (ILI9341_DMA_Wait(1500U) != ILI9341_OK)
   {
-      dma_safety_fail = 3U;
-      Error_Handler();
+    dma_safety_fail = 3U;
+    Error_Handler();
   }
   dma_safety_ms = HAL_GetTick() - safety_start;
 
@@ -146,7 +153,7 @@ int main(void)
   dma_fault_test_result = (uint32_t)M14_DMA_FaultTest_Run(&hspi2);
   if (dma_fault_test_result != (uint32_t)M14_DMA_TEST_PASS)
   {
-      Error_Handler(); /* Inspect dma_fault_test_result in Debugger. */
+    Error_Handler(); /* Inspect dma_fault_test_result in Debugger. */
   }
 #endif
 
@@ -155,15 +162,20 @@ int main(void)
   pixel_dma_test_result = (uint32_t)M14_PixelDMA_Test_Run();
   if (pixel_dma_test_result != (uint32_t)M14_PIXEL_DMA_TEST_PASS)
   {
-      Error_Handler();
+    Error_Handler();
   }
 #endif
 
+  /* Optional five-target calibration runs before Dashboard uses the LCD. */
+#if M2_ENABLE_TOUCH_CALIBRATION && M2_ENABLE_TOUCH_RAW_TEST
+  M2_TouchRaw_Init();
+  M2_Cal_RunBoot();
+#endif
   /* Resume the original known-working blocking Dashboard path. */
   Dashboard_Init();
   /* B1/PA0 is a safe virtual-touch input source (no TFT SPI sharing). */
   M2_Input_Init(HAL_GetTick());
-#if M2_ENABLE_TOUCH_RAW_TEST
+#if M2_ENABLE_TOUCH_RAW_TEST && !M2_ENABLE_TOUCH_CALIBRATION
   M2_TouchRaw_Init();
 #endif
   M14_Perf_Init(HAL_GetTick());
@@ -184,88 +196,93 @@ int main(void)
     M2_Input_Service(now);
 #if M2_ENABLE_TOUCH_RAW_TEST
     M2_TouchRaw_Service(now);
+#if M2_ENABLE_TOUCH_CALIBRATION
+    M2_Cal_Service(); /* Coordinate diagnostics only; no UI gesture injection. */
+#endif
 #endif
     M2_InputEvent input_event;
     while (M2_Input_Pop(&input_event))
     {
-        /* Synthetic B1 taps exercise the same classification entry point
-         * a later, calibrated hardware touch driver will use. */
-        M2_InputTarget target = M2_Input_Classify(&input_event);
-        m2_last_target = (uint32_t)target;
-        m2_last_source = (uint32_t)input_event.source;
-        m2_last_x = input_event.x;
-        m2_last_y = input_event.y;
-        switch (target)
-        {
-            case M2_INPUT_TARGET_RX:
-                router_stats.rx_kbps += 1000U;
-                break;
-            case M2_INPUT_TARGET_TX:
-                router_stats.tx_kbps += 500U;
-                break;
-            case M2_INPUT_TARGET_CPU:
-                router_stats.cpu_usage =
-                    (uint8_t)(((uint32_t)router_stats.cpu_usage + 25U) % 101U);
-                break;
-            case M2_INPUT_TARGET_RAM:
-                router_stats.mem_usage =
-                    (uint8_t)(((uint32_t)router_stats.mem_usage + 25U) % 101U);
-                break;
-            default: break;
-        }
-        if (target != M2_INPUT_TARGET_NONE)
-        {
-            Dashboard_Update(&router_stats);
-            M14_Perf_OnStatsQueued(now);
-        }
+      /* Synthetic B1 taps exercise the same classification entry point
+       * a later, calibrated hardware touch driver will use. */
+      M2_InputTarget target = M2_Input_Classify(&input_event);
+      m2_last_target = (uint32_t)target;
+      m2_last_source = (uint32_t)input_event.source;
+      m2_last_x = input_event.x;
+      m2_last_y = input_event.y;
+      switch (target)
+      {
+      case M2_INPUT_TARGET_RX:
+        router_stats.rx_kbps += 1000U;
+        break;
+      case M2_INPUT_TARGET_TX:
+        router_stats.tx_kbps += 500U;
+        break;
+      case M2_INPUT_TARGET_CPU:
+        router_stats.cpu_usage =
+            (uint8_t)(((uint32_t)router_stats.cpu_usage + 25U) % 101U);
+        break;
+      case M2_INPUT_TARGET_RAM:
+        router_stats.mem_usage =
+            (uint8_t)(((uint32_t)router_stats.mem_usage + 25U) % 101U);
+        break;
+      default:
+        break;
+      }
+      if (target != M2_INPUT_TARGET_NONE)
+      {
+        Dashboard_Update(&router_stats);
+        M14_Perf_OnStatsQueued(now);
+      }
     }
     uint8_t dma_fault = ILI9341_DMA_HasError();
     M14_Perf_Poll(now, Dashboard_IsBusy(), dma_fault);
     if (dma_fault)
     {
-        /* Do not silently clear: preserve evidence for debugger. */
-        dma_safety_fail = 4U;
-        Error_Handler();
+      /* Do not silently clear: preserve evidence for debugger. */
+      dma_safety_fail = 4U;
+      Error_Handler();
     }
 
     /* Statistics acquisition must not wait for the display DMA queue. */
     if ((uint32_t)(now - last_update_ms) >= 1000U)
     {
-        last_update_ms = now;
-        router_stats.rx_kbps += 100U;
-        router_stats.tx_kbps += 50U;
-        if (router_stats.rx_kbps > 5000U) router_stats.rx_kbps = 1000U;
-        if (router_stats.tx_kbps > 2000U) router_stats.tx_kbps = 300U;
-        router_stats.cpu_usage = (uint8_t)((router_stats.cpu_usage + 5U) % 100U);
-        router_stats.mem_usage = (uint8_t)((router_stats.mem_usage + 3U) % 100U);
-        Dashboard_Update(&router_stats);
-        M14_Perf_OnStatsQueued(HAL_GetTick());
+      last_update_ms = now;
+      router_stats.rx_kbps += 100U;
+      router_stats.tx_kbps += 50U;
+      if (router_stats.rx_kbps > 5000U)
+        router_stats.rx_kbps = 1000U;
+      if (router_stats.tx_kbps > 2000U)
+        router_stats.tx_kbps = 300U;
+      router_stats.cpu_usage = (uint8_t)((router_stats.cpu_usage + 5U) % 100U);
+      router_stats.mem_usage = (uint8_t)((router_stats.mem_usage + 3U) % 100U);
+      Dashboard_Update(&router_stats);
+      M14_Perf_OnStatsQueued(HAL_GetTick());
     }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
   }
   /* USER CODE END 3 */
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -281,9 +298,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
@@ -296,10 +312,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief SPI2 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief SPI2 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_SPI2_Init(void)
 {
 
@@ -330,12 +346,11 @@ static void MX_SPI2_Init(void)
   /* USER CODE BEGIN SPI2_Init 2 */
 
   /* USER CODE END SPI2_Init 2 */
-
 }
 
 /**
-  * Enable DMA controller clock
-  */
+ * Enable DMA controller clock
+ */
 static void MX_DMA_Init(void)
 {
 
@@ -346,14 +361,13 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream4_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -369,7 +383,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6 | GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PB12 */
   GPIO_InitStruct.Pin = GPIO_PIN_12;
@@ -379,7 +393,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PD6 PD7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -394,20 +408,20 @@ static void MX_GPIO_Init(void)
 void HAL_SPI_TxCpltCallback(
     SPI_HandleTypeDef *hspi)
 {
-    ILI9341_DMA_TxCompleteCallback(hspi);
+  ILI9341_DMA_TxCompleteCallback(hspi);
 }
 
 void HAL_SPI_ErrorCallback(
     SPI_HandleTypeDef *hspi)
 {
-    ILI9341_DMA_ErrorCallback(hspi);
+  ILI9341_DMA_ErrorCallback(hspi);
 }
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -420,12 +434,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
