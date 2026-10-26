@@ -30,6 +30,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "m2_cal_store.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,6 +48,7 @@
 #if M2_ENABLE_TOUCH_CALIBRATION && !M2_ENABLE_TOUCH_RAW_TEST
 #error "Touch calibration requires M2_ENABLE_TOUCH_RAW_TEST=1"
 #endif
+#define M2_ENABLE_CAL_STORE 1U /* Keep calibration in reserved Flash sector 11. */
 
 /* USER CODE END PD */
 
@@ -169,7 +171,26 @@ int main(void)
   /* Optional five-target calibration runs before Dashboard uses the LCD. */
 #if M2_ENABLE_TOUCH_CALIBRATION && M2_ENABLE_TOUCH_RAW_TEST
   M2_TouchRaw_Init();
-  M2_Cal_RunBoot();
+#if M2_ENABLE_CAL_STORE
+  M2_CalStore_Init();
+  uint8_t force_recal = M2_CalStore_ForceRecalibration();
+  if (!force_recal && M2_CalStore_Load(&m2_calibration))
+  {
+      /* Validated CRC and exact screen geometry on load. */
+      m2_cal_debug = (M2_CalDebug){0};
+      m2_cal_debug.result = M2_CAL_PASS;
+      m2_cal_debug.calibrated = 1U;
+      m2_cal_debug.max_error_px = m2_cal_store_stats.loaded_fit_error_px;
+  }
+  else
+  {
+      M2_Cal_RunBoot();
+      if (m2_cal_debug.result == M2_CAL_PASS && m2_calibration.valid)
+          (void)M2_CalStore_Save(&m2_calibration, m2_cal_debug.max_error_px);
+  }
+#else
+  M2_Cal_RunBoot(); /* M2.2 RAM-only fallback */
+#endif
 #endif
   /* Resume the original known-working blocking Dashboard path. */
   Dashboard_Init();
