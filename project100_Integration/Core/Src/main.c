@@ -30,6 +30,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "m2_touch_perf.h"
 #include "m2_cal_store.h"
 /* USER CODE END Includes */
 
@@ -200,6 +201,7 @@ int main(void)
   M2_TouchRaw_Init();
 #endif
   M14_Perf_Init(HAL_GetTick());
+  M2_TouchPerf_Init(HAL_GetTick());
   Dashboard_Update(&router_stats);
   M14_Perf_OnStatsQueued(HAL_GetTick());
   last_update_ms = HAL_GetTick();
@@ -214,6 +216,7 @@ int main(void)
     M14_Perf_RecordService(service_begin);
 
     uint32_t now = HAL_GetTick();
+    uint32_t m25_input_begin = M14_Perf_CycleNow();
     M2_Input_Service(now);
 #if M2_ENABLE_TOUCH_RAW_TEST
     M2_TouchRaw_Service(now);
@@ -221,6 +224,7 @@ int main(void)
     M2_Cal_Service(); /* Coordinate diagnostics only; no UI gesture injection. */
 #endif
 #endif
+    M2_TouchPerf_OnInputService(m25_input_begin, M14_Perf_CycleNow());
     M2_InputEvent input_event;
     while (M2_Input_Pop(&input_event))
     {
@@ -254,10 +258,12 @@ int main(void)
       {
         Dashboard_Update(&router_stats);
         M14_Perf_OnStatsQueued(now);
+        M2_TouchPerf_OnAction(&input_event, target, now);
       }
     }
     uint8_t dma_fault = ILI9341_DMA_HasError();
     M14_Perf_Poll(now, Dashboard_IsBusy(), dma_fault);
+    M2_TouchPerf_Poll(now, Dashboard_IsBusy(), dma_fault);
     if (dma_fault)
     {
       /* Do not silently clear: preserve evidence for debugger. */
