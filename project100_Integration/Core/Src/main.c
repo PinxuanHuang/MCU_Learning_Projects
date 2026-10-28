@@ -31,6 +31,7 @@
 /* USER CODE BEGIN Includes */
 
 #include "m2_touch_perf.h"
+#include "m3_data_provider.h"
 #include "m2_cal_store.h"
 /* USER CODE END Includes */
 
@@ -72,9 +73,8 @@ volatile uint32_t pixel_dma_test_result = 0xFFFFFFFFU; /* Not run */
 volatile uint32_t m2_last_target = 0U;
 volatile uint32_t m2_last_source = 0U;
 volatile uint32_t m2_last_x = 0U, m2_last_y = 0U;
-static DashboardStats router_stats = {
-    .rx_kbps = 1200U, .tx_kbps = 500U, .cpu_usage = 20U, .mem_usage = 40U};
-static uint32_t last_update_ms = 0U;
+/* Owned by Data Provider; never retain pointers to stack telemetry samples. */
+static DashboardStats router_stats;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -202,9 +202,9 @@ int main(void)
 #endif
   M14_Perf_Init(HAL_GetTick());
   M2_TouchPerf_Init(HAL_GetTick());
+  M3_DataProvider_Init(HAL_GetTick(), &router_stats);
   Dashboard_Update(&router_stats);
   M14_Perf_OnStatsQueued(HAL_GetTick());
-  last_update_ms = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -235,26 +235,8 @@ int main(void)
       m2_last_source = (uint32_t)input_event.source;
       m2_last_x = input_event.x;
       m2_last_y = input_event.y;
-      switch (target)
-      {
-      case M2_INPUT_TARGET_RX:
-        router_stats.rx_kbps += 1000U;
-        break;
-      case M2_INPUT_TARGET_TX:
-        router_stats.tx_kbps += 500U;
-        break;
-      case M2_INPUT_TARGET_CPU:
-        router_stats.cpu_usage =
-            (uint8_t)(((uint32_t)router_stats.cpu_usage + 25U) % 101U);
-        break;
-      case M2_INPUT_TARGET_RAM:
-        router_stats.mem_usage =
-            (uint8_t)(((uint32_t)router_stats.mem_usage + 25U) % 101U);
-        break;
-      default:
-        break;
-      }
-      if (target != M2_INPUT_TARGET_NONE)
+      if (target != M2_INPUT_TARGET_NONE &&
+          M3_DataProvider_OnTouch(target, &router_stats) != 0U)
       {
         Dashboard_Update(&router_stats);
         M14_Perf_OnStatsQueued(now);
@@ -271,20 +253,11 @@ int main(void)
       Error_Handler();
     }
 
-    /* Statistics acquisition must not wait for the display DMA queue. */
-    if ((uint32_t)(now - last_update_ms) >= 1000U)
+    /* Data acquisition must not wait for the display DMA queue. */
+    if (M3_DataProvider_Poll(now, &router_stats) != 0U)
     {
-      last_update_ms = now;
-      router_stats.rx_kbps += 100U;
-      router_stats.tx_kbps += 50U;
-      if (router_stats.rx_kbps > 5000U)
-        router_stats.rx_kbps = 1000U;
-      if (router_stats.tx_kbps > 2000U)
-        router_stats.tx_kbps = 300U;
-      router_stats.cpu_usage = (uint8_t)((router_stats.cpu_usage + 5U) % 100U);
-      router_stats.mem_usage = (uint8_t)((router_stats.mem_usage + 3U) % 100U);
       Dashboard_Update(&router_stats);
-      M14_Perf_OnStatsQueued(HAL_GetTick());
+      M14_Perf_OnStatsQueued(now);
     }
     /* USER CODE END WHILE */
 
