@@ -1,11 +1,11 @@
 /* M2.5 - foreground-only touch/DMA end-to-end performance diagnostics.
  * No SPI, GPIO, Flash or DMA writes. This module observes existing services.
  */
-#ifndef M2_TOUCH_PERF_H_
-#define M2_TOUCH_PERF_H_
+#ifndef TOUCH_PERF_H_
+#define TOUCH_PERF_H_
 
 #include <stdint.h>
-#include "m2_input.h"
+#include "touch_input.h"
 
 typedef struct {
     uint32_t input_service_calls;
@@ -38,21 +38,21 @@ typedef struct {
     uint32_t soak_elapsed_ms;
     uint8_t touch_batch_pending;
     uint8_t soak_30min_pass;
-} M2_TouchPerfStats;
+} TouchPerfStats;
 
-extern volatile M2_TouchPerfStats m2_touch_perf;
+extern volatile TouchPerfStats touch_perf;
 
-/* Initialize after M14_Perf_Init and after touch input initialization. */
-void M2_TouchPerf_Init(uint32_t now_ms);
-/* Bracket M2_Input_Service + raw touch + calibration + UI bridge services. */
-void M2_TouchPerf_OnInputService(uint32_t start_cycles, uint32_t end_cycles);
+/* Initialize after DashboardPerf_Init and after touch input initialization. */
+void TouchPerf_Init(uint32_t now_ms);
+/* Bracket TouchInput_Service + raw touch + calibration + UI bridge services. */
+void TouchPerf_OnInputService(uint32_t start_cycles, uint32_t end_cycles);
 /* Call ONLY when a classified input action enqueues Dashboard_Update(). */
-void M2_TouchPerf_OnAction(const M2_InputEvent *event,
-                           M2_InputTarget target, uint32_t now_ms);
+void TouchPerf_OnAction(const TouchInputEvent *event,
+                           TouchInputTarget target, uint32_t now_ms);
 /* Call after Dashboard_Service, event consumption, and Dashboard_Update.
  * dashboard_busy must use Dashboard_IsBusy() (checks active/queued DMA).
  */
-void M2_TouchPerf_Poll(uint32_t now_ms, uint8_t dashboard_busy,
+void TouchPerf_Poll(uint32_t now_ms, uint8_t dashboard_busy,
                        uint8_t dma_fault);
 
-#endif /* M2_TOUCH_PERF_H_ */
+#endif /* TOUCH_PERF_H_ */

@@ -3,7 +3,7 @@
  * STM32F407G-DISC1 P2 breakout: PC6 CLK, PC7 CS, PC8 DIN, PC9 DO, PC10 IRQ.
  * The U2 IC must be checked for XPT2046/ADS7846 compatibility.
  */
-#include "m2_touch_raw.h"
+#include "touch_raw.h"
 #include "main.h"
 
 #define TOUCH_PORT GPIOC
@@ -18,7 +18,7 @@
 #define TOUCH_CMD_X 0xD0U
 #define TOUCH_CMD_Y 0x90U
 
-volatile M2_TouchRawStats m2_touch_raw_stats;
+volatile TouchRawStats touch_raw_stats;
 static uint32_t s_last_sample_ms;
 
 static void pin_set(uint16_t pin, GPIO_PinState state)
@@ -76,7 +76,7 @@ static uint16_t median5(uint16_t data[TOUCH_SAMPLE_COUNT])
     return data[TOUCH_SAMPLE_COUNT / 2U];
 }
 
-void M2_TouchRaw_Init(void)
+void TouchRaw_Init(void)
 {
     GPIO_InitTypeDef gpio = {0};
     __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -100,35 +100,35 @@ void M2_TouchRaw_Init(void)
     gpio.Pull = GPIO_PULLUP;   /* PENIRQ is typically active low / open drain. */
     HAL_GPIO_Init(TOUCH_PORT, &gpio);
 
-    m2_touch_raw_stats = (M2_TouchRawStats){0};
-    m2_touch_raw_stats.min_x = 4095U;
-    m2_touch_raw_stats.min_y = 4095U;
+    touch_raw_stats = (TouchRawStats){0};
+    touch_raw_stats.min_x = 4095U;
+    touch_raw_stats.min_y = 4095U;
     /* MCU reset need not reset the external controller. Complete a PD0=0
      * conversion before waiting for PENIRQ, so pen detection is enabled.
      * This startup conversion is discarded rather than counted as a touch.
      */
     (void)read12(TOUCH_CMD_Y);
     HAL_Delay(1U);
-    m2_touch_raw_stats.initialized = 1U;
+    touch_raw_stats.initialized = 1U;
     s_last_sample_ms = HAL_GetTick() - TOUCH_SAMPLE_PERIOD_MS;
 }
 
-void M2_TouchRaw_Service(uint32_t now_ms)
+void TouchRaw_Service(uint32_t now_ms)
 {
-    if (!m2_touch_raw_stats.initialized ||
+    if (!touch_raw_stats.initialized ||
         (uint32_t)(now_ms - s_last_sample_ms) < TOUCH_SAMPLE_PERIOD_MS)
         return;
     s_last_sample_ms = now_ms;
-    m2_touch_raw_stats.polls++;
+    touch_raw_stats.polls++;
 
     /* Sample PENIRQ only when CS is high; during ADC conversions it may float. */
     uint8_t pressed = (uint8_t)(HAL_GPIO_ReadPin(TOUCH_PORT, TOUCH_IRQ)
                                      == GPIO_PIN_RESET);
-    if (pressed != m2_touch_raw_stats.pressed)
+    if (pressed != touch_raw_stats.pressed)
     {
-        if (pressed) m2_touch_raw_stats.pen_down_edges++;
-        else         m2_touch_raw_stats.pen_up_edges++;
-        m2_touch_raw_stats.pressed = pressed;
+        if (pressed) touch_raw_stats.pen_down_edges++;
+        else         touch_raw_stats.pen_up_edges++;
+        touch_raw_stats.pressed = pressed;
     }
     if (!pressed) return;
 
@@ -143,14 +143,14 @@ void M2_TouchRaw_Service(uint32_t now_ms)
     /* No fabricated screen coordinates; reject obvious absent/invalid ADC samples. */
     if (x == 0U || x == 4095U || y == 0U || y == 4095U)
     {
-        m2_touch_raw_stats.invalid_samples++;
+        touch_raw_stats.invalid_samples++;
         return;
     }
-    m2_touch_raw_stats.raw_x = x;
-    m2_touch_raw_stats.raw_y = y;
-    if (x < m2_touch_raw_stats.min_x) m2_touch_raw_stats.min_x = x;
-    if (x > m2_touch_raw_stats.max_x) m2_touch_raw_stats.max_x = x;
-    if (y < m2_touch_raw_stats.min_y) m2_touch_raw_stats.min_y = y;
-    if (y > m2_touch_raw_stats.max_y) m2_touch_raw_stats.max_y = y;
-    m2_touch_raw_stats.samples_ok++;
+    touch_raw_stats.raw_x = x;
+    touch_raw_stats.raw_y = y;
+    if (x < touch_raw_stats.min_x) touch_raw_stats.min_x = x;
+    if (x > touch_raw_stats.max_x) touch_raw_stats.max_x = x;
+    if (y < touch_raw_stats.min_y) touch_raw_stats.min_y = y;
+    if (y > touch_raw_stats.max_y) touch_raw_stats.max_y = y;
+    touch_raw_stats.samples_ok++;
 }

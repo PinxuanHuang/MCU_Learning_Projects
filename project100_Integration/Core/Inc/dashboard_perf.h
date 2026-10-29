@@ -1,6 +1,6 @@
 /* M1.4.6 - SPI2 DMA / dashboard instrumentation, foreground-only API except IRQ. */
-#ifndef M14_PERF_H_
-#define M14_PERF_H_
+#ifndef DASHBOARD_PERF_H_
+#define DASHBOARD_PERF_H_
 
 #include <stdint.h>
 
@@ -8,7 +8,7 @@ typedef struct
 {
     uint32_t dwt_available;           /* 1: DWT CYCCNT enabled, 0: ms + IRQ counts only */
     uint32_t core_clock_hz;           /* cycles/second */
-    uint32_t uptime_ms;               /* since M14_Perf_Init */
+    uint32_t uptime_ms;               /* since DashboardPerf_Init */
     uint32_t soak_30min_pass;         /* automated duration+fault check only */
 
     uint32_t update_requests;         /* Dashboard_Update calls observed */
@@ -30,16 +30,16 @@ typedef struct
     uint64_t dma_irq_total_cycles;    /* HAL handler + callbacks, not whole CPU use */
 
     uint32_t dma_fault_count;         /* rising edges of fault indication */
-} M14_PerfStats;
+} DashboardPerfStats;
 
 /* Visible from STM32CubeIDE Debugger Expressions. IRQ fields update in ISR. */
-extern volatile M14_PerfStats m14_perf;
+extern volatile DashboardPerfStats dashboard_perf;
 
-void M14_Perf_Init(uint32_t now_ms);
-uint32_t M14_Perf_CycleNow(void);
-void M14_Perf_RecordService(uint32_t start_cycles);
-void M14_Perf_RecordDmaIrq(uint32_t start_cycles);
-void M14_Perf_OnStatsQueued(uint32_t now_ms);
-void M14_Perf_Poll(uint32_t now_ms, uint8_t dashboard_busy, uint8_t dma_fault);
+void DashboardPerf_Init(uint32_t now_ms);
+uint32_t DashboardPerf_CycleNow(void);
+void DashboardPerf_RecordService(uint32_t start_cycles);
+void DashboardPerf_RecordDmaIrq(uint32_t start_cycles);
+void DashboardPerf_OnStatsQueued(uint32_t now_ms);
+void DashboardPerf_Poll(uint32_t now_ms, uint8_t dashboard_busy, uint8_t dma_fault);
 
-#endif /* M14_PERF_H_ */
+#endif /* DASHBOARD_PERF_H_ */

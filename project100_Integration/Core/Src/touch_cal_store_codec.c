@@ -1,11 +1,11 @@
 /* M2.4: CRC-guarded affine coefficient encoding. No I/O side effects. */
-#include "m2_cal_store_codec.h"
+#include "touch_cal_store_codec.h"
 #include <string.h>
 
 _Static_assert(sizeof(double) == 8U, "M2.4 needs IEEE-754 binary64 double");
-_Static_assert(sizeof(M2_CalRecord) == 76U, "unexpected flash record layout");
+_Static_assert(sizeof(TouchCalRecord) == 76U, "unexpected flash record layout");
 
-uint32_t M2_CalRecord_Crc32(const uint8_t *data, uint32_t size)
+uint32_t TouchCalRecord_Crc32(const uint8_t *data, uint32_t size)
 {
     uint32_t crc = 0xFFFFFFFFUL;
     if (data == NULL) return 0U;
@@ -31,8 +31,8 @@ static uint8_t sane(const double coeff[6])
     return 1U;
 }
 
-uint8_t M2_CalRecord_Encode(M2_CalRecord *record,
-                            const M2_Calibration *cal,
+uint8_t TouchCalRecord_Encode(TouchCalRecord *record,
+                            const TouchCalibration *cal,
                             uint32_t sequence, uint16_t fit_error_px)
 {
     if (record == NULL || cal == NULL || !cal->valid ||
@@ -41,46 +41,46 @@ uint8_t M2_CalRecord_Encode(M2_CalRecord *record,
                              cal->d, cal->e, cal->f};
     if (!sane(coeff)) return 0U;
     memset(record, 0xFF, sizeof(*record));
-    record->words[0] = M2_CAL_STORE_MAGIC;
-    record->words[1] = M2_CAL_STORE_VERSION;
+    record->words[0] = TOUCH_CAL_STORE_MAGIC;
+    record->words[1] = TOUCH_CAL_STORE_VERSION;
     record->words[2] = sequence;
-    record->words[3] = M2_CAL_STORE_GEOMETRY;
+    record->words[3] = TOUCH_CAL_STORE_GEOMETRY;
     record->words[4] = fit_error_px;
     memcpy(&record->words[5], coeff, sizeof(coeff));
-    record->words[17] = M2_CalRecord_Crc32((const uint8_t *)record,
+    record->words[17] = TouchCalRecord_Crc32((const uint8_t *)record,
                                           17U * sizeof(uint32_t));
-    record->words[18] = M2_CAL_STORE_COMMIT;
+    record->words[18] = TOUCH_CAL_STORE_COMMIT;
     return 1U;
 }
 
-uint8_t M2_CalRecord_Decode(const M2_CalRecord *record,
-                            M2_Calibration *cal,
+uint8_t TouchCalRecord_Decode(const TouchCalRecord *record,
+                            TouchCalibration *cal,
                             uint32_t *sequence, uint16_t *fit_error_px)
 {
     if (record == NULL || cal == NULL) return 0U;
-    if (record->words[0] != M2_CAL_STORE_MAGIC ||
-        record->words[1] != M2_CAL_STORE_VERSION ||
+    if (record->words[0] != TOUCH_CAL_STORE_MAGIC ||
+        record->words[1] != TOUCH_CAL_STORE_VERSION ||
         record->words[2] == 0U ||
-        record->words[3] != M2_CAL_STORE_GEOMETRY ||
+        record->words[3] != TOUCH_CAL_STORE_GEOMETRY ||
         record->words[4] > 18U ||
-        record->words[18] != M2_CAL_STORE_COMMIT ||
-        record->words[17] != M2_CalRecord_Crc32((const uint8_t *)record,
+        record->words[18] != TOUCH_CAL_STORE_COMMIT ||
+        record->words[17] != TouchCalRecord_Crc32((const uint8_t *)record,
                                                 17U * sizeof(uint32_t)))
         return 0U;
     double coeff[6];
     memcpy(coeff, &record->words[5], sizeof(coeff));
     if (!sane(coeff)) return 0U;
-    *cal = (M2_Calibration){coeff[0], coeff[1], coeff[2],
+    *cal = (TouchCalibration){coeff[0], coeff[1], coeff[2],
                             coeff[3], coeff[4], coeff[5], 1U};
     if (sequence != NULL) *sequence = record->words[2];
     if (fit_error_px != NULL) *fit_error_px = (uint16_t)record->words[4];
     return 1U;
 }
 
-uint8_t M2_CalRecord_IsBlank(const M2_CalRecord *record)
+uint8_t TouchCalRecord_IsBlank(const TouchCalRecord *record)
 {
     if (record == NULL) return 0U;
-    for (uint8_t i = 0U; i < M2_CAL_STORE_RECORD_WORDS; ++i)
+    for (uint8_t i = 0U; i < TOUCH_CAL_STORE_RECORD_WORDS; ++i)
         if (record->words[i] != 0xFFFFFFFFUL) return 0U;
     return 1U;
 }

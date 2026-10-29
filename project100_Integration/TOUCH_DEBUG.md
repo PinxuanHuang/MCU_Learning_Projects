@@ -2,7 +2,7 @@
 
 ## 本次修正
 
-`M2_TouchRaw_Init()` 在 GPIO 初始化後，主動完成一次 `0x90`
+`TouchRaw_Init()` 在 GPIO 初始化後，主動完成一次 `0x90`
 （PD1:PD0 = 00）轉換，再等待 1 ms，確保 PENIRQ 已啟用。
 啟動轉換的資料不算觸控樣本。原本必須先讀到 IRQ LOW 才會送命令；
 若觸控 IC 留在 PENIRQ 停用狀態，這個先後相依會阻止後續取樣。
@@ -35,16 +35,16 @@ MCU reset 不保證同時重置外部觸控 IC。
 
 | 變數 | 正常行為 |
 |---|---|
-| `m2_touch_raw_stats.initialized` | 初始化後固定為 1 |
-| `m2_touch_raw_stats.polls` | 有無觸碰都約每秒增加 50 |
-| `m2_touch_debug.service_calls` | 主迴圈持續呼叫時增加 |
-| `m2_touch_debug.last_service_ms` | 隨 HAL tick 增加 |
-| `m2_touch_debug.irq_pin_high` | 放開 1，按下 0（取樣前的電位） |
-| `m2_touch_raw_stats.pressed` | 按住 1，放開 0 |
-| `m2_touch_raw_stats.pen_down_edges` / `pen_up_edges` | 各次按下／放開累計 |
-| `m2_touch_raw_stats.samples_ok` | 按住時增加 |
-| `m2_touch_debug.last_median_x` / `last_median_y` | 最近原始座標 |
-| `m2_touch_debug.reject_bits` | 最近座標取樣的拒收原因；0 正常，1 X、2 Y 到端點 |
+| `touch_raw_stats.initialized` | 初始化後固定為 1 |
+| `touch_raw_stats.polls` | 有無觸碰都約每秒增加 50 |
+| `touch_debug.service_calls` | 主迴圈持續呼叫時增加 |
+| `touch_debug.last_service_ms` | 隨 HAL tick 增加 |
+| `touch_debug.irq_pin_high` | 放開 1，按下 0（取樣前的電位） |
+| `touch_raw_stats.pressed` | 按住 1，放開 0 |
+| `touch_raw_stats.pen_down_edges` / `pen_up_edges` | 各次按下／放開累計 |
+| `touch_raw_stats.samples_ok` | 按住時增加 |
+| `touch_debug.last_median_x` / `last_median_y` | 最近原始座標 |
+| `touch_debug.reject_bits` | 最近座標取樣的拒收原因；0 正常，1 X、2 Y 到端點 |
 
 若仍量到「按下 HIGH」，先對照 PC10 與 `irq_pin_high`；不要直接反轉判斷。
 本次板上讀值已證實 LOW 路徑能產生按下事件及有效 ADC 資料。

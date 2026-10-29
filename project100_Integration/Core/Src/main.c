@@ -17,12 +17,12 @@
  */
 #include "ili9341.h"
 #include "dashboard.h"
-#include "m14_dma_fault_test.h"
-#include "m14_pixel_dma_test.h"
-#include "m14_perf.h"
-#include "m2_calibration.h"
-#include "m2_input.h"
-#include "m2_touch_raw.h"
+#include "dma_fault_test.h"
+#include "pixel_dma_test.h"
+#include "dashboard_perf.h"
+#include "touch_calibration.h"
+#include "touch_input.h"
+#include "touch_raw.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -30,9 +30,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include "m2_touch_perf.h"
-#include "m3_data_provider.h"
-#include "m2_cal_store.h"
+#include "touch_perf.h"
+#include "router_data_provider.h"
+#include "touch_cal_store.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,15 +42,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define M14_ENABLE_DMA_FAULT_TEST 0U   /* Set to 1 for one controlled boot test. */
-#define M14_ENABLE_PIXEL_DMA_TEST 0U   /* Set to 1 for visible color/clipping test. */
-#define M2_ENABLE_TOUCH_RAW_TEST 1U    /* PC6..PC10 touch wiring verified on board. */
-#define M2_ENABLE_TOUCH_CALIBRATION 1U /* Set to 1 for five-point boot calibration. */
+#define ENABLE_DMA_FAULT_TEST 0U   /* Set to 1 for one controlled boot test. */
+#define ENABLE_PIXEL_DMA_TEST 0U   /* Set to 1 for visible color/clipping test. */
+#define ENABLE_TOUCH_RAW_TEST 1U    /* PC6..PC10 touch wiring verified on board. */
+#define ENABLE_TOUCH_CALIBRATION 1U /* Set to 1 for five-point boot calibration. */
 
-#if M2_ENABLE_TOUCH_CALIBRATION && !M2_ENABLE_TOUCH_RAW_TEST
-#error "Touch calibration requires M2_ENABLE_TOUCH_RAW_TEST=1"
+#if ENABLE_TOUCH_CALIBRATION && !ENABLE_TOUCH_RAW_TEST
+#error "Touch calibration requires ENABLE_TOUCH_RAW_TEST=1"
 #endif
-#define M2_ENABLE_CAL_STORE 1U /* Keep calibration in reserved Flash sector 11. */
+#define ENABLE_CAL_STORE 1U /* Keep calibration in reserved Flash sector 11. */
 
 /* USER CODE END PD */
 
@@ -70,9 +70,9 @@ volatile uint32_t dma_safety_fail = 0U;
 volatile uint32_t dma_fault_test_result = 0xFFFFFFFFU; /* Not run */
 volatile uint32_t pixel_dma_test_result = 0xFFFFFFFFU; /* Not run */
 /* B1 demo diagnostics: values visible in CubeIDE Expressions. */
-volatile uint32_t m2_last_target = 0U;
-volatile uint32_t m2_last_source = 0U;
-volatile uint32_t m2_last_x = 0U, m2_last_y = 0U;
+volatile uint32_t touch_last_target = 0U;
+volatile uint32_t touch_last_source = 0U;
+volatile uint32_t touch_last_x = 0U, touch_last_y = 0U;
 /* Owned by Data Provider; never retain pointers to stack telemetry samples. */
 static DashboardStats router_stats;
 /* USER CODE END PV */
@@ -151,101 +151,101 @@ int main(void)
   }
   dma_safety_ms = HAL_GetTick() - safety_start;
 
-#if M14_ENABLE_DMA_FAULT_TEST
+#if ENABLE_DMA_FAULT_TEST
   /* Run before Dashboard_Init(): tests deliberately interrupt pixel DMA. */
-  dma_fault_test_result = (uint32_t)M14_DMA_FaultTest_Run(&hspi2);
-  if (dma_fault_test_result != (uint32_t)M14_DMA_TEST_PASS)
+  dma_fault_test_result = (uint32_t)DmaFaultTest_Run(&hspi2);
+  if (dma_fault_test_result != (uint32_t)DMA_TEST_PASS)
   {
     Error_Handler(); /* Inspect dma_fault_test_result in Debugger. */
   }
 #endif
 
-#if M14_ENABLE_PIXEL_DMA_TEST
+#if ENABLE_PIXEL_DMA_TEST
   /* Visible multi-color test before Dashboard_Init() restores the screen. */
-  pixel_dma_test_result = (uint32_t)M14_PixelDMA_Test_Run();
-  if (pixel_dma_test_result != (uint32_t)M14_PIXEL_DMA_TEST_PASS)
+  pixel_dma_test_result = (uint32_t)PixelDmaTest_Run();
+  if (pixel_dma_test_result != (uint32_t)PIXEL_DMA_TEST_PASS)
   {
     Error_Handler();
   }
 #endif
 
   /* Optional five-target calibration runs before Dashboard uses the LCD. */
-#if M2_ENABLE_TOUCH_CALIBRATION && M2_ENABLE_TOUCH_RAW_TEST
-  M2_TouchRaw_Init();
-#if M2_ENABLE_CAL_STORE
-  M2_CalStore_Init();
-  uint8_t force_recal = M2_CalStore_ForceRecalibration();
-  if (!force_recal && M2_CalStore_Load(&m2_calibration))
+#if ENABLE_TOUCH_CALIBRATION && ENABLE_TOUCH_RAW_TEST
+  TouchRaw_Init();
+#if ENABLE_CAL_STORE
+  TouchCalStore_Init();
+  uint8_t force_recal = TouchCalStore_ForceRecalibration();
+  if (!force_recal && TouchCalStore_Load(&touch_calibration))
   {
       /* Validated CRC and exact screen geometry on load. */
-      m2_cal_debug = (M2_CalDebug){0};
-      m2_cal_debug.result = M2_CAL_PASS;
-      m2_cal_debug.calibrated = 1U;
-      m2_cal_debug.max_error_px = m2_cal_store_stats.loaded_fit_error_px;
+      touch_cal_debug = (TouchCalDebug){0};
+      touch_cal_debug.result = TOUCH_CAL_PASS;
+      touch_cal_debug.calibrated = 1U;
+      touch_cal_debug.max_error_px = touch_cal_store_stats.loaded_fit_error_px;
   }
   else
   {
-      M2_Cal_RunBoot();
-      if (m2_cal_debug.result == M2_CAL_PASS && m2_calibration.valid)
-          (void)M2_CalStore_Save(&m2_calibration, m2_cal_debug.max_error_px);
+      TouchCal_RunBoot();
+      if (touch_cal_debug.result == TOUCH_CAL_PASS && touch_calibration.valid)
+          (void)TouchCalStore_Save(&touch_calibration, touch_cal_debug.max_error_px);
   }
 #else
-  M2_Cal_RunBoot(); /* M2.2 RAM-only fallback */
+  TouchCal_RunBoot(); /* M2.2 RAM-only fallback */
 #endif
 #endif
   /* Resume the original known-working blocking Dashboard path. */
   Dashboard_Init();
   /* B1/PA0 is a safe virtual-touch input source (no TFT SPI sharing). */
-  M2_Input_Init(HAL_GetTick());
-#if M2_ENABLE_TOUCH_RAW_TEST && !M2_ENABLE_TOUCH_CALIBRATION
-  M2_TouchRaw_Init();
+  TouchInput_Init(HAL_GetTick());
+#if ENABLE_TOUCH_RAW_TEST && !ENABLE_TOUCH_CALIBRATION
+  TouchRaw_Init();
 #endif
-  M14_Perf_Init(HAL_GetTick());
-  M2_TouchPerf_Init(HAL_GetTick());
-  M3_DataProvider_Init(HAL_GetTick(), &router_stats);
+  DashboardPerf_Init(HAL_GetTick());
+  TouchPerf_Init(HAL_GetTick());
+  RouterDataProvider_Init(HAL_GetTick(), &router_stats);
   Dashboard_Update(&router_stats);
-  M14_Perf_OnStatsQueued(HAL_GetTick());
+  DashboardPerf_OnStatsQueued(HAL_GetTick());
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    uint32_t service_begin = M14_Perf_CycleNow();
+    uint32_t service_begin = DashboardPerf_CycleNow();
     Dashboard_Service();
-    M14_Perf_RecordService(service_begin);
+    DashboardPerf_RecordService(service_begin);
 
     uint32_t now = HAL_GetTick();
-    uint32_t m25_input_begin = M14_Perf_CycleNow();
-    M2_Input_Service(now);
-#if M2_ENABLE_TOUCH_RAW_TEST
-    M2_TouchRaw_Service(now);
-#if M2_ENABLE_TOUCH_CALIBRATION
-    M2_Cal_Service(); /* Coordinate diagnostics only; no UI gesture injection. */
+    uint32_t touch_input_begin = DashboardPerf_CycleNow();
+    TouchInput_Service(now);
+#if ENABLE_TOUCH_RAW_TEST
+    TouchRaw_Service(now);
+#if ENABLE_TOUCH_CALIBRATION
+    TouchCal_Service(); /* Coordinate diagnostics only; no UI gesture injection. */
 #endif
 #endif
-    M2_TouchPerf_OnInputService(m25_input_begin, M14_Perf_CycleNow());
-    M2_InputEvent input_event;
-    while (M2_Input_Pop(&input_event))
+    TouchPerf_OnInputService(touch_input_begin, DashboardPerf_CycleNow());
+    TouchInputEvent input_event;
+    while (TouchInput_Pop(&input_event))
     {
       /* Synthetic B1 taps exercise the same classification entry point
        * a later, calibrated hardware touch driver will use. */
-      M2_InputTarget target = M2_Input_Classify(&input_event);
-      m2_last_target = (uint32_t)target;
-      m2_last_source = (uint32_t)input_event.source;
-      m2_last_x = input_event.x;
-      m2_last_y = input_event.y;
-      if (target != M2_INPUT_TARGET_NONE &&
-          M3_DataProvider_OnTouch(target, &router_stats) != 0U)
+      TouchInputTarget target = TouchInput_Classify(&input_event);
+      touch_last_target = (uint32_t)target;
+      touch_last_source = (uint32_t)input_event.source;
+      touch_last_x = input_event.x;
+      touch_last_y = input_event.y;
+      if (target != TOUCH_INPUT_TARGET_NONE &&
+          RouterDataProvider_OnTouch(target, &router_stats) != 0U)
       {
         Dashboard_Update(&router_stats);
-        M14_Perf_OnStatsQueued(now);
-        M2_TouchPerf_OnAction(&input_event, target, now);
+        DashboardPerf_OnStatsQueued(now);
+        TouchPerf_OnAction(&input_event, target, now);
       }
     }
     uint8_t dma_fault = ILI9341_DMA_HasError();
-    M14_Perf_Poll(now, Dashboard_IsBusy(), dma_fault);
-    M2_TouchPerf_Poll(now, Dashboard_IsBusy(), dma_fault);
+    DashboardPerf_Poll(now, Dashboard_IsBusy(), dma_fault);
+    TouchPerf_Poll(now, Dashboard_IsBusy(), dma_fault);
     if (dma_fault)
     {
       /* Do not silently clear: preserve evidence for debugger. */
@@ -254,10 +254,10 @@ int main(void)
     }
 
     /* Data acquisition must not wait for the display DMA queue. */
-    if (M3_DataProvider_Poll(now, &router_stats) != 0U)
+    if (RouterDataProvider_Poll(now, &router_stats) != 0U)
     {
       Dashboard_Update(&router_stats);
-      M14_Perf_OnStatsQueued(now);
+      DashboardPerf_OnStatsQueued(now);
     }
     /* USER CODE END WHILE */
 

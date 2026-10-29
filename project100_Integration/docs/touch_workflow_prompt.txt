@@ -7,7 +7,7 @@ Subtitle: "一般模式已驗證：按下／放開可偵測，原始座標可讀
 Three main columns with separate clear headings:
 
 LEFT "① 啟動（只做一次）"
-Stack: "HAL / Clock / GPIO / SPI2 初始化" -> "LCD 初始化、DMA 自測、Dashboard_Init" -> "M2_Input_Init" -> "M2_TouchRaw_Init".
+Stack: "HAL / Clock / GPIO / SPI2 初始化" -> "LCD 初始化、DMA 自測、Dashboard_Init" -> "TouchInput_Init" -> "TouchRaw_Init".
 Within last block small text: "PC6 CLK · PC7 CS · PC8 DIN · PC9 DO · PC10 IRQ", "送出 0x90，完成轉換以啟用 PENIRQ", "HAL_Delay(1)；丟棄啟動樣本".
 Arrow toward middle top.
 
@@ -15,9 +15,9 @@ MIDDLE "② main while(1) 持續循環"
 Stack numbered boxes:
 "1  Dashboard_Service() — 推進 LCD DMA"
 "2  now = HAL_GetTick()"
-"3  M2_Input_Service(now) — B1 按鍵"
-"4  M2_TouchRaw_Service(now) — 面板觸控"
-"5  M2_Input_Pop() — 處理佇列事件"
+"3  TouchInput_Service(now) — B1 按鍵"
+"4  TouchRaw_Service(now) — 面板觸控"
+"5  TouchInput_Pop() — 處理佇列事件"
 "6  DMA 故障檢查／效能統計"
 "7  每 1000 ms 更新 Dashboard 資料"
 Draw return arrow from 7 to 1. Dashed explanatory connector from box 4 to right panel details; this connector is a zoom-in, not a separate background task.
@@ -32,6 +32,6 @@ All right-panel returns mean returning to middle step 5, explicitly add "return 
 
 BOTTOM full-width clear two-note band, no overcrowding:
 Orange note "排程不等待 20 ms；取樣期間 CPU 同步工作。觸控 SPI 無 DMA，主迴圈要等取樣完成；中斷仍可執行。"
-Gray dashed future path "尚未串接：原始座標 → 校正／旋轉 → M2_Input_FeedTouchSample → TAP → Dashboard"
+Gray dashed future path "尚未串接：原始座標 → 校正／旋轉 → TouchInput_FeedTouchSample → TAP → Dashboard"
 Small explanation "目前實體觸控只更新狀態與原始資料；佇列主要由 B1 模擬點擊產生。"
 Do not falsely connect raw touch directly to Dashboard actions. Do not describe this as fully non-blocking. No invented latency measurements.

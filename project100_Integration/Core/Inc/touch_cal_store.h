@@ -2,25 +2,25 @@
  * Only sector 11 is used: 0x080E0000..0x080FFFFF (128 KiB).
  * The linker MUST reserve this sector: application FLASH length = 896K.
  */
-#ifndef M2_CAL_STORE_H_
-#define M2_CAL_STORE_H_
+#ifndef TOUCH_CAL_STORE_H_
+#define TOUCH_CAL_STORE_H_
 
-#include "m2_calibration.h"
+#include "touch_calibration.h"
 #include <stdint.h>
 
-#define M2_CAL_STORE_START_ADDR  0x080E0000UL
-#define M2_CAL_STORE_SECTOR_SIZE 131072UL
-#define M2_CAL_STORE_SLOT_COUNT  1724UL /* floor(128KiB / 76) */
+#define TOUCH_CAL_STORE_START_ADDR  0x080E0000UL
+#define TOUCH_CAL_STORE_SECTOR_SIZE 131072UL
+#define TOUCH_CAL_STORE_SLOT_COUNT  1724UL /* floor(128KiB / 76) */
 
 typedef enum {
-    M2_STORE_NONE = 0,
-    M2_STORE_LOADED = 1,
-    M2_STORE_EMPTY = 2,
-    M2_STORE_SAVED = 3,
-    M2_STORE_FULL = 4,
-    M2_STORE_INVALID = 5,
-    M2_STORE_WRITE_ERROR = 6
-} M2_CalStoreResult;
+    TOUCH_STORE_NONE = 0,
+    TOUCH_STORE_LOADED = 1,
+    TOUCH_STORE_EMPTY = 2,
+    TOUCH_STORE_SAVED = 3,
+    TOUCH_STORE_FULL = 4,
+    TOUCH_STORE_INVALID = 5,
+    TOUCH_STORE_WRITE_ERROR = 6
+} TouchCalStoreResult;
 
 typedef struct {
     uint32_t slots_used;
@@ -35,17 +35,17 @@ typedef struct {
     uint8_t loaded_from_flash;
     uint8_t force_recalibration;
     uint8_t result;
-} M2_CalStoreStats;
+} TouchCalStoreStats;
 
-extern volatile M2_CalStoreStats m2_cal_store_stats;
+extern volatile TouchCalStoreStats touch_cal_store_stats;
 
 /* Call before display DMA begins, after clock and touch GPIO initialization. */
-void M2_CalStore_Init(void);
-uint8_t M2_CalStore_Load(M2_Calibration *cal);
-uint8_t M2_CalStore_Save(const M2_Calibration *cal, uint16_t fit_error_px);
+void TouchCalStore_Init(void);
+uint8_t TouchCalStore_Load(TouchCalibration *cal);
+uint8_t TouchCalStore_Save(const TouchCalibration *cal, uint16_t fit_error_px);
 /* Press and hold DISC1 B1 before reset; ~1.2s at boot triggers re-calibration.
  * No data is erased just by holding the button.
  */
-uint8_t M2_CalStore_ForceRecalibration(void);
+uint8_t TouchCalStore_ForceRecalibration(void);
 
-#endif /* M2_CAL_STORE_H_ */
+#endif /* TOUCH_CAL_STORE_H_ */

@@ -3,8 +3,8 @@
  * Pin mapping: PC6 CLK, PC7 CS, PC8 DIN, PC9 DO, PC10 IRQ.
  * All functions are foreground-only. GPIO software SPI is isolated from TFT SPI2 DMA.
  */
-#ifndef M2_TOUCH_RAW_H_
-#define M2_TOUCH_RAW_H_
+#ifndef TOUCH_RAW_H_
+#define TOUCH_RAW_H_
 
 #include <stdint.h>
 
@@ -22,13 +22,13 @@ typedef struct {
     uint16_t max_y;
     uint8_t pressed;
     uint8_t initialized;
-} M2_TouchRawStats;
+} TouchRawStats;
 
-extern volatile M2_TouchRawStats m2_touch_raw_stats;
+extern volatile TouchRawStats touch_raw_stats;
 
 /* Initializes PC6..PC10 ONLY when called (off by default in main.c). */
-void M2_TouchRaw_Init(void);
+void TouchRaw_Init(void);
 /* Poll every ~20 ms from main. Raw values are not mapped to screen coordinates. */
-void M2_TouchRaw_Service(uint32_t now_ms);
+void TouchRaw_Service(uint32_t now_ms);
 
-#endif /* M2_TOUCH_RAW_H_ */
+#endif /* TOUCH_RAW_H_ */
