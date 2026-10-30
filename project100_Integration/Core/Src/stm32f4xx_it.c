@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "dashboard_perf.h"
+#include "router_transport_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -214,5 +215,10 @@ void DMA1_Stream4_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+/* RX-only USART2, manually enabled by RouterUart_Init().
+ * Runs at lower priority than SPI2 DMA and never touches Dashboard. */
+void USART2_IRQHandler(void)
+{
+  RouterUart_IrqHandler();
+}
 /* USER CODE END 1 */

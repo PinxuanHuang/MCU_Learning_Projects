@@ -32,6 +32,7 @@
 
 #include "touch_perf.h"
 #include "router_data_provider.h"
+#include "router_transport_uart.h"
 #include "touch_cal_store.h"
 /* USER CODE END Includes */
 
@@ -51,6 +52,7 @@
 #error "Touch calibration requires ENABLE_TOUCH_RAW_TEST=1"
 #endif
 #define ENABLE_CAL_STORE 1U /* Keep calibration in reserved Flash sector 11. */
+#define ENABLE_ROUTER_UART 0U /* Set to 1 after wiring 3.3V TTL TX to PA3. */
 
 /* USER CODE END PD */
 
@@ -75,6 +77,7 @@ volatile uint32_t touch_last_source = 0U;
 volatile uint32_t touch_last_x = 0U, touch_last_y = 0U;
 /* Owned by Data Provider; never retain pointers to stack telemetry samples. */
 static DashboardStats router_stats;
+volatile uint32_t router_uart_init_failed = 0U;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -203,6 +206,10 @@ int main(void)
   DashboardPerf_Init(HAL_GetTick());
   TouchPerf_Init(HAL_GetTick());
   RouterDataProvider_Init(HAL_GetTick(), &router_stats);
+#if ENABLE_ROUTER_UART
+  if (RouterUart_Init() == 0U)
+    router_uart_init_failed = 1U; /* Leave DEMO running; inspect clocks. */
+#endif
   Dashboard_Update(&router_stats);
   DashboardPerf_OnStatsQueued(HAL_GetTick());
   /* USER CODE END 2 */
@@ -253,6 +260,22 @@ int main(void)
       Error_Handler();
     }
 
+    /* Consume a bounded amount of serial telemetry in foreground only.
+     * Never process frames, publish stats or redraw from USART2 IRQ. */
+#if ENABLE_ROUTER_UART
+    if (router_uart_init_failed == 0U)
+    {
+      RouterRxSample telemetry;
+      if (RouterUart_Poll(now, &telemetry) != 0U)
+      {
+        DashboardStats received = {
+            telemetry.telemetry.rx_kbps, telemetry.telemetry.tx_kbps,
+            telemetry.telemetry.cpu_usage, telemetry.telemetry.mem_usage};
+        (void)RouterDataProvider_PublishExternal(&received,
+                                                 telemetry.received_ms);
+      }
+    }
+#endif
     /* Data acquisition must not wait for the display DMA queue. */
     if (RouterDataProvider_Poll(now, &router_stats) != 0U)
     {
